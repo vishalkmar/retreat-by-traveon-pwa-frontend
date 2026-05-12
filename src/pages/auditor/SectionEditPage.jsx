@@ -1,0 +1,138 @@
+import { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Save } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { api, apiMessage } from '../../services/api.js';
+import { SECTIONS } from '../../config.js';
+import TopBar from '../../components/shell/TopBar.jsx';
+import Button from '../../components/ui/Button.jsx';
+import Field, { Textarea } from '../../components/ui/Field.jsx';
+import PhotoUploader from '../../components/PhotoUploader.jsx';
+import ChatThread from '../../components/ChatThread.jsx';
+import LoadingScreen from '../../components/LoadingScreen.jsx';
+
+// Single-section editor. We load the parent property once to find this
+// section's current state, then save through PUT
+// /auditor/properties/:id/sections/:sectionKey as multipart.
+
+const SectionEditPage = () => {
+  const { id, sectionKey } = useParams();
+  const navigate = useNavigate();
+  const section = SECTIONS.find((s) => s.key === sectionKey);
+  const [property, setProperty] = useState(null);
+  const [field, setField] = useState(null);
+  const [review, setReview] = useState(null);
+  const [description, setDescription] = useState('');
+  const [existing, setExisting] = useState([]);
+  const [removedUrls, setRemovedUrls] = useState([]);
+  const [pending, setPending] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await api.get(`/auditor/properties/${id}`);
+      const p = r.data?.data?.property;
+      setProperty(p);
+      const f = (p.fields || []).find((x) => x.sectionKey === sectionKey) || null;
+      setField(f);
+      setReview((p.reviews || []).find((x) => x.sectionKey === sectionKey) || null);
+      setDescription(f?.description || '');
+      setExisting(f?.photoUrls || []);
+      setRemovedUrls([]);
+      setPending([]);
+    } catch {
+      toast.error('Could not load');
+    } finally {
+      setLoading(false);
+    }
+  }, [id, sectionKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    if (!description.trim()) return toast.error('Notes are required');
+    const newCount = existing.filter((u) => !removedUrls.includes(u)).length + pending.length;
+    if (newCount === 0) return toast.error('Add at least one photo');
+
+    setSaving(true);
+    try {
+      const fd = new FormData();
+      fd.append('description', description);
+      if (removedUrls.length) fd.append('removeUrls', removedUrls.join(','));
+      pending.forEach((f) => fd.append('photos', f));
+
+      await api.put(`/auditor/properties/${id}/sections/${sectionKey}`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success('Saved');
+      navigate(-1);
+    } catch (err) {
+      toast.error(apiMessage(err, 'Could not save'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!section) return null;
+  if (loading) return <div className="app-shell"><LoadingScreen /></div>;
+
+  const locked = ['phase3_submitted', 'in_review', 'approved', 'contract_sent', 'contract_signed', 'completed', 'rejected']
+    .includes(property?.status);
+
+  return (
+    <div className="app-shell">
+      <TopBar title={section.label} />
+      <main className="flex-1 overflow-y-auto p-4 pb-24">
+        <p className="text-xs text-slate-500">{section.hint}</p>
+
+        {review?.decision === 'rejected' && review.comment && (
+          <div className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-900">
+            <strong className="block">Officer raised an objection:</strong>
+            {review.comment}
+          </div>
+        )}
+
+        <div className="mt-4 space-y-4">
+          <Field label="Notes / description">
+            <Textarea
+              rows={5}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={`Describe the ${section.label.toLowerCase()} in detail.`}
+              disabled={locked}
+            />
+          </Field>
+
+          <div>
+            <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600">
+              Photos
+            </p>
+            <PhotoUploader
+              existing={existing.filter((u) => !removedUrls.includes(u))}
+              pending={pending}
+              onAdd={(files) => setPending((p) => [...p, ...files])}
+              onRemoveExisting={locked ? null : (url) => setRemovedUrls((r) => [...r, url])}
+              onRemovePending={(idx) => setPending((p) => p.filter((_, i) => i !== idx))}
+            />
+          </div>
+
+          {!locked && (
+            <Button size="block" onClick={save} loading={saving}>
+              <Save size={16} /> Save section
+            </Button>
+          )}
+        </div>
+
+        <div className="mt-6">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Discussion · {section.label}
+          </p>
+          <ChatThread endpoint="/auditor" propertyId={Number(id)} sectionKey={sectionKey} />
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default SectionEditPage;

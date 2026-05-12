@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Mobile-first defaults. Setting safe-area-aware padding so iOS notches
+   don't eat the top bar. The .app-shell wrapper enforces a max-width that
+   keeps the app from feeling stretched on tablets/desktops. */
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.app-shell {
+  min-height: 100dvh;
+  max-width: 28rem; /* ~448px — mobile width */
+  margin: 0 auto;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+
+.app-launch {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(20, 184, 166, 0.14), transparent 34%),
+    linear-gradient(180deg, #f0fdfa 0%, #ffffff 42%, #ffffff 100%);
+  animation: appLaunchIn 420ms ease-out both;
+}
+
+@media (min-width: 640px) {
+  body {
+    background: #e2e8f0;
+  }
+  .app-shell {
+    margin-top: 16px;
+    margin-bottom: 16px;
+    border-radius: 24px;
+    overflow: hidden;
+    min-height: calc(100dvh - 32px);
+  }
+}
+
+/* Honor iOS safe-area */
+.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Form niceties */
+input, textarea, select, button {
+  font: inherit;
+}
+input:focus, textarea:focus, select:focus {
+  outline: none;
+}
+
+/* Smooth tap on iOS */
+button { touch-action: manipulation; }
+
+@keyframes appLaunchIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
