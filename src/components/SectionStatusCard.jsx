@@ -38,7 +38,7 @@ const SectionStatusCard = ({
           <span className="truncate font-semibold text-slate-900">{label}</span>
           {required && <span className="text-[9px] font-semibold text-rose-500">REQ</span>}
         </span>
-        {hint && <span className="block truncate text-xs text-slate-500">{hint}</span>}
+        {hint && <span className="block truncate text-xs font-medium text-rose-600">{hint}</span>}
         <span className="mt-1.5 flex items-center gap-3 text-[11px] text-slate-500">
           <span className="inline-flex items-center gap-1">
             <ImageIcon size={11} /> {photos}

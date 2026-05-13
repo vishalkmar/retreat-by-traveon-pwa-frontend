@@ -27,6 +27,7 @@ const PropertyDetailPage = () => {
   const navigate = useNavigate();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [notifications, setNotifications] = useState([]);
   const { socket } = useSocket();
   usePropertyRoom(property?.id);
 
@@ -46,12 +47,22 @@ const PropertyDetailPage = () => {
   useEffect(() => {
     if (!socket) return undefined;
     const onUpdate = () => load();
+    const onFieldReview = (payload) => {
+      const label = SECTIONS.find((s) => s.key === payload?.sectionKey)?.label || 'A section';
+      const decision = payload?.review?.decision === 'rejected' ? 'objection raised' : 'review updated';
+      setNotifications((items) => [
+        { id: Date.now(), text: `${label}: ${decision}`, at: new Date().toLocaleTimeString() },
+        ...items,
+      ].slice(0, 5));
+      toast(`${label}: ${decision}`);
+      load();
+    };
     socket.on('property:status', onUpdate);
-    socket.on('property:field-review', onUpdate);
+    socket.on('property:field-review', onFieldReview);
     socket.on('property:suggestion', onUpdate);
     return () => {
       socket.off('property:status', onUpdate);
-      socket.off('property:field-review', onUpdate);
+      socket.off('property:field-review', onFieldReview);
       socket.off('property:suggestion', onUpdate);
     };
   }, [socket, load]);
@@ -104,6 +115,17 @@ const PropertyDetailPage = () => {
           </section>
         )}
 
+        {notifications.length > 0 && (
+          <section className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">Live notifications</p>
+            <div className="mt-2 space-y-1">
+              {notifications.map((n) => (
+                <p key={n.id} className="text-xs text-amber-900">{n.text} <span className="text-amber-700">{n.at}</span></p>
+              ))}
+            </div>
+          </section>
+        )}
+
         {phase2Needed && (
           <Button
             size="block"
@@ -130,6 +152,8 @@ const PropertyDetailPage = () => {
             {SECTIONS.map((s) => {
               const f = fieldByKey[s.key];
               const r = reviewByKey[s.key];
+              const canEdit = ['phase1_done', 'in_revision'].includes(property.status) ||
+                (r?.decision === 'approved' && r?.approvedForFutureReview);
               return (
                 <SectionStatusCard
                   key={s.key}
@@ -140,11 +164,7 @@ const PropertyDetailPage = () => {
                   hasText={!!(f?.description || '').trim()}
                   decision={r?.decision || (f ? 'pending' : 'not_started')}
                   comment={r?.decision === 'rejected' ? r.comment : null}
-                  onClick={
-                    ['phase1_done', 'in_revision'].includes(property.status) && property.propertyCode
-                      ? () => navigate(`/auditor/properties/${id}/sections/${s.key}`)
-                      : null
-                  }
+                  onClick={canEdit && property.propertyCode ? () => navigate(`/auditor/properties/${id}/sections/${s.key}`) : null}
                 />
               );
             })}

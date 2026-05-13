@@ -10,6 +10,7 @@ import Field, { Textarea } from '../../components/ui/Field.jsx';
 import PhotoUploader from '../../components/PhotoUploader.jsx';
 import ChatThread from '../../components/ChatThread.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
+import { usePropertyRoom, useSocket } from '../../context/SocketContext.jsx';
 
 // Single-section editor. We load the parent property once to find this
 // section's current state, then save through PUT
@@ -28,6 +29,13 @@ const SectionEditPage = () => {
   const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { socket } = useSocket();
+  usePropertyRoom(property?.id);
+
+  const minPhotos = (() => {
+    const roomMinimum = Math.ceil((Number(property?.numberOfRooms) || 0) * 0.5);
+    return sectionKey === 'rooms' ? Math.max(3, roomMinimum || 3) : 3;
+  })();
 
   const load = useCallback(async () => {
     try {
@@ -50,10 +58,26 @@ const SectionEditPage = () => {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onReview = (payload) => {
+      if (payload?.sectionKey === sectionKey) {
+        toast(payload.review?.decision === 'rejected' ? 'Officer raised an objection' : 'Officer reviewed this section');
+        load();
+      }
+    };
+    socket.on('property:field-review', onReview);
+    socket.on('property:suggestion', load);
+    return () => {
+      socket.off('property:field-review', onReview);
+      socket.off('property:suggestion', load);
+    };
+  }, [socket, sectionKey, load]);
+
   const save = async () => {
     if (!description.trim()) return toast.error('Notes are required');
     const newCount = existing.filter((u) => !removedUrls.includes(u)).length + pending.length;
-    if (newCount === 0) return toast.error('Add at least one photo');
+    if (newCount < minPhotos) return toast.error(`Add at least ${minPhotos} uploaded photos`);
 
     setSaving(true);
     try {
@@ -77,7 +101,8 @@ const SectionEditPage = () => {
   if (!section) return null;
   if (loading) return <div className="app-shell"><LoadingScreen /></div>;
 
-  const locked = ['phase3_submitted', 'in_review', 'approved', 'contract_sent', 'contract_signed', 'completed', 'rejected']
+  const futureReviewOpen = review?.decision === 'approved' && review?.approvedForFutureReview;
+  const locked = !futureReviewOpen && ['phase3_submitted', 'in_review', 'approved', 'contract_sent', 'contract_signed', 'completed', 'rejected']
     .includes(property?.status);
 
   return (
@@ -85,6 +110,9 @@ const SectionEditPage = () => {
       <TopBar title={section.label} />
       <main className="flex-1 overflow-y-auto p-4 pb-24">
         <p className="text-xs text-slate-500">{section.hint}</p>
+        <p className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+          Instruction: notes required, minimum {minPhotos} live uploaded photos required for this field.
+        </p>
 
         {review?.decision === 'rejected' && review.comment && (
           <div className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-900">
@@ -114,6 +142,8 @@ const SectionEditPage = () => {
               onAdd={(files) => setPending((p) => [...p, ...files])}
               onRemoveExisting={locked ? null : (url) => setRemovedUrls((r) => [...r, url])}
               onRemovePending={(idx) => setPending((p) => p.filter((_, i) => i !== idx))}
+              max={sectionKey === 'rooms' ? Math.max(50, minPhotos) : 10}
+              minimum={minPhotos}
             />
           </div>
 

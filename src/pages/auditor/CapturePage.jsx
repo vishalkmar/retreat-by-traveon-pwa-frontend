@@ -62,11 +62,16 @@ const CapturePage = () => {
     return m;
   }, [property]);
 
+  const minPhotosForSection = (sectionKey) => {
+    const roomMinimum = Math.ceil((Number(property?.numberOfRooms) || 0) * 0.5);
+    return sectionKey === 'rooms' ? Math.max(3, roomMinimum || 3) : 3;
+  };
+
   const allRequiredFilled = SECTIONS
     .filter((s) => s.required)
     .every((s) => {
       const f = fieldByKey[s.key];
-      return f && (f.description || '').trim() && (f.photoUrls || []).length > 0;
+      return f && (f.description || '').trim() && (f.photoUrls || []).length >= minPhotosForSection(s.key);
     });
 
   const submit = async () => {
@@ -121,17 +126,18 @@ const CapturePage = () => {
           {SECTIONS.map((s) => {
             const f = fieldByKey[s.key];
             const r = reviewByKey[s.key];
+            const canEdit = !locked || (r?.decision === 'approved' && r?.approvedForFutureReview);
             return (
               <SectionStatusCard
                 key={s.key}
                 label={s.label}
-                hint={s.hint}
+                hint={`${s.hint} Minimum photos: ${minPhotosForSection(s.key)}.`}
                 required={s.required}
                 photos={(f?.photoUrls || []).length}
                 hasText={!!(f?.description || '').trim()}
                 decision={r?.decision || (f ? 'pending' : 'not_started')}
                 comment={r?.decision === 'rejected' ? r.comment : null}
-                onClick={() => navigate(`/auditor/properties/${id}/sections/${s.key}`)}
+                onClick={canEdit ? () => navigate(`/auditor/properties/${id}/sections/${s.key}`) : null}
               />
             );
           })}
@@ -149,7 +155,7 @@ const CapturePage = () => {
             </Button>
             {!allRequiredFilled && (
               <p className="mt-2 text-center text-[11px] text-rose-600">
-                Fill every required section with a note and at least one photo to submit.
+                Fill every required section with notes and the required minimum live uploaded photos.
               </p>
             )}
           </div>

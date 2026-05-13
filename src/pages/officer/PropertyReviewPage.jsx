@@ -34,9 +34,16 @@ const SectionReview = ({ propertyId, section, field, review, locked, onChange })
   const [open, setOpen] = useState(false);
   const [comment, setComment] = useState(review?.comment || '');
   const [showRejectInput, setShowRejectInput] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [busyDecision, setBusyDecision] = useState(null);
+  const [approvedForFutureReview, setApprovedForFutureReview] = useState(!!review?.approvedForFutureReview);
 
   const decision = review?.decision || (field ? 'pending' : 'not_started');
+
+  useEffect(() => {
+    setComment(review?.comment || '');
+    setApprovedForFutureReview(!!review?.approvedForFutureReview);
+    setShowRejectInput(false);
+  }, [review?.comment, review?.approvedForFutureReview, review?.decision]);
 
   const decide = async (next) => {
     if (next === 'rejected' && !showRejectInput) {
@@ -48,11 +55,16 @@ const SectionReview = ({ propertyId, section, field, review, locked, onChange })
       toast.error('Please add a comment explaining the objection');
       return;
     }
-    setBusy(true);
+    if (next === 'approved' && decision === 'approved') return;
+    setBusyDecision(next);
     try {
       const r = await api.patch(
         `/officer/properties/${propertyId}/fields/${section.key}/decision`,
-        { decision: next, comment: next === 'rejected' ? comment.trim() : null }
+        {
+          decision: next,
+          comment: next === 'rejected' ? comment.trim() : null,
+          approvedForFutureReview: next === 'approved' ? approvedForFutureReview : false,
+        }
       );
       onChange?.(r.data?.data);
       toast.success(next === 'approved' ? 'Marked approved' : 'Objection raised');
@@ -60,7 +72,7 @@ const SectionReview = ({ propertyId, section, field, review, locked, onChange })
     } catch (err) {
       toast.error(apiMessage(err, 'Could not save'));
     } finally {
-      setBusy(false);
+      setBusyDecision(null);
     }
   };
 
@@ -112,24 +124,46 @@ const SectionReview = ({ propertyId, section, field, review, locked, onChange })
             </Field>
           )}
 
-          {!locked && (
-            <div className="flex gap-2">
+          {!locked && showRejectInput ? (
+            <button
+              type="button"
+              disabled={busyDecision === 'rejected'}
+              onClick={() => decide('rejected')}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+            >
+              {busyDecision === 'rejected' && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+              <X size={16} /> Raise now
+            </button>
+          ) : !locked && (
+            <div className="space-y-2">
+              <label className="flex items-start gap-2 rounded-lg bg-emerald-50 px-2 py-2 text-xs font-medium text-emerald-800">
+                <input
+                  type="checkbox"
+                  checked={approvedForFutureReview}
+                  onChange={(e) => setApprovedForFutureReview(e.target.checked)}
+                  className="mt-0.5"
+                />
+                Approved for future review
+              </label>
+              <div className="flex gap-2">
               <button
                 type="button"
-                disabled={busy}
+                disabled={busyDecision === 'approved' || decision === 'approved'}
                 onClick={() => decide('approved')}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
               >
+                {busyDecision === 'approved' && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
                 <Check size={16} /> Approve
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busyDecision === 'rejected'}
                 onClick={() => decide('rejected')}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
               >
               <X size={16} /> Raise objection
               </button>
+              </div>
             </div>
           )}
 
@@ -162,7 +196,8 @@ const PropertyReviewPage = () => {
   const [busySuggestion, setBusySuggestion] = useState(false);
   const [finalRejectReason, setFinalRejectReason] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
-  const [busyFinal, setBusyFinal] = useState(false);
+  const [busyFinal, setBusyFinal] = useState(null);
+  const [notifications, setNotifications] = useState([]);
   const { socket } = useSocket();
   usePropertyRoom(property?.id);
 
@@ -184,12 +219,23 @@ const PropertyReviewPage = () => {
   useEffect(() => {
     if (!socket) return undefined;
     const handler = () => load();
+    const onFieldUpdated = (payload) => {
+      const label = SECTIONS.find((s) => s.key === payload?.sectionKey)?.label || 'A section';
+      setNotifications((items) => [
+        { id: Date.now(), text: `${label} was updated by auditor`, at: new Date().toLocaleTimeString() },
+        ...items,
+      ].slice(0, 5));
+      toast(`${label} updated by auditor`);
+      load();
+    };
     socket.on('property:status', handler);
-    socket.on('property:field-updated', handler);
+    socket.on('property:field-updated', onFieldUpdated);
+    socket.on('property:field-review', handler);
     socket.on('property:suggestion', handler);
     return () => {
       socket.off('property:status', handler);
-      socket.off('property:field-updated', handler);
+      socket.off('property:field-updated', onFieldUpdated);
+      socket.off('property:field-review', handler);
       socket.off('property:suggestion', handler);
     };
   }, [socket, load]);
@@ -217,7 +263,7 @@ const PropertyReviewPage = () => {
   };
 
   const finalApprove = async () => {
-    setBusyFinal(true);
+    setBusyFinal('approve');
     try {
       const r = await api.post(`/officer/properties/${id}/approve`);
       setProperty(r.data?.data?.property);
@@ -225,12 +271,12 @@ const PropertyReviewPage = () => {
     } catch (err) {
       toast.error(apiMessage(err, 'Could not approve'));
     } finally {
-      setBusyFinal(false);
+      setBusyFinal(null);
     }
   };
 
   const followUp = async () => {
-    setBusyFinal(true);
+    setBusyFinal('follow-up');
     try {
       const r = await api.post(`/officer/properties/${id}/follow-up`, { suggestion });
       setProperty(r.data?.data?.property);
@@ -239,7 +285,7 @@ const PropertyReviewPage = () => {
     } catch (err) {
       toast.error(apiMessage(err, 'Could not move to follow-up'));
     } finally {
-      setBusyFinal(false);
+      setBusyFinal(null);
     }
   };
 
@@ -248,7 +294,7 @@ const PropertyReviewPage = () => {
       toast.error('Provide a rejection reason');
       return;
     }
-    setBusyFinal(true);
+    setBusyFinal('reject');
     try {
       const r = await api.post(`/officer/properties/${id}/reject`, { reason: finalRejectReason.trim() });
       setProperty(r.data?.data?.property);
@@ -258,7 +304,7 @@ const PropertyReviewPage = () => {
     } catch (err) {
       toast.error(apiMessage(err, 'Could not reject'));
     } finally {
-      setBusyFinal(false);
+      setBusyFinal(null);
     }
   };
 
@@ -292,6 +338,16 @@ const PropertyReviewPage = () => {
         </section>
 
         <p className="mt-5 px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Review sections</p>
+        {notifications.length > 0 && (
+          <section className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">Live notifications</p>
+            <div className="mt-2 space-y-1">
+              {notifications.map((n) => (
+                <p key={n.id} className="text-xs text-amber-900">{n.text} <span className="text-amber-700">{n.at}</span></p>
+              ))}
+            </div>
+          </section>
+        )}
         <div className="mt-2 flex flex-col gap-2">
           {SECTIONS.map((s) => (
             <SectionReview
@@ -328,9 +384,9 @@ const PropertyReviewPage = () => {
             <Button
               variant="primary"
               size="block"
-              disabled={!canFinalize}
+              disabled={!canFinalize || (busyFinal && busyFinal !== 'approve')}
               onClick={finalApprove}
-              loading={busyFinal}
+              loading={busyFinal === 'approve'}
               className="!bg-emerald-600 hover:!bg-emerald-700"
             >
               <ShieldCheck size={16} /> Approved
@@ -339,7 +395,8 @@ const PropertyReviewPage = () => {
               variant="secondary"
               size="block"
               onClick={followUp}
-              loading={busyFinal}
+              disabled={busyFinal && busyFinal !== 'follow-up'}
+              loading={busyFinal === 'follow-up'}
             >
               <RefreshCcw size={16} /> Following up
             </Button>
@@ -347,7 +404,8 @@ const PropertyReviewPage = () => {
               variant="danger"
               size="block"
               onClick={() => setShowRejectModal(true)}
-              loading={busyFinal}
+              disabled={busyFinal && busyFinal !== 'reject'}
+              loading={busyFinal === 'reject'}
             >
               <ShieldX size={16} /> Reject
             </Button>
@@ -382,7 +440,7 @@ const PropertyReviewPage = () => {
                 <Button variant="secondary" size="md" onClick={() => setShowRejectModal(false)} className="flex-1">
                   Cancel
                 </Button>
-                <Button variant="danger" size="md" onClick={finalReject} loading={busyFinal} className="flex-1">
+                <Button variant="danger" size="md" onClick={finalReject} loading={busyFinal === 'reject'} className="flex-1">
                   Final reject
                 </Button>
               </div>

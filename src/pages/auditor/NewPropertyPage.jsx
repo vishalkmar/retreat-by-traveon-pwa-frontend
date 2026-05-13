@@ -1,21 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { MapPin, Locate } from 'lucide-react';
+import { Locate } from 'lucide-react';
 import { api, apiMessage } from '../../services/api.js';
 import TopBar from '../../components/shell/TopBar.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Field, { Input, Textarea } from '../../components/ui/Field.jsx';
-
-// Phase 1: capture basic property details. On submit, the backend returns
-// the new property record; we navigate to the Phase-2 "generate ID" screen.
 
 const NewPropertyPage = () => {
   const navigate = useNavigate();
   const [form, setForm] = useState({
     name: '',
     address: '',
-    locationMode: 'manual',
+    locationMode: 'pinned',
     locationText: '',
     latitude: '',
     longitude: '',
@@ -30,6 +27,17 @@ const NewPropertyPage = () => {
 
   const setField = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
+  const reverseGeocode = async (latitude, longitude) => {
+    const url = new URL('https://nominatim.openstreetmap.org/reverse');
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('lat', latitude);
+    url.searchParams.set('lon', longitude);
+    const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+    if (!response.ok) throw new Error('Could not resolve address');
+    const data = await response.json();
+    return data.display_name || `${latitude}, ${longitude}`;
+  };
+
   const usePinned = () => {
     if (!navigator.geolocation) {
       toast.error('Location not supported on this device');
@@ -37,14 +45,24 @@ const NewPropertyPage = () => {
     }
     setPinning(true);
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
+        const latitude = pos.coords.latitude.toFixed(7);
+        const longitude = pos.coords.longitude.toFixed(7);
+        let fullAddress = `${latitude}, ${longitude}`;
+        try {
+          fullAddress = await reverseGeocode(latitude, longitude);
+        } catch {
+          toast.error('Pinned location found, but address lookup failed');
+        }
         setForm((f) => ({
           ...f,
           locationMode: 'pinned',
-          latitude: pos.coords.latitude.toFixed(7),
-          longitude: pos.coords.longitude.toFixed(7),
+          latitude,
+          longitude,
+          address: fullAddress,
+          locationText: fullAddress,
         }));
-        toast.success('Location pinned');
+        toast.success('Current location pinned');
         setPinning(false);
       },
       (err) => {
@@ -57,6 +75,10 @@ const NewPropertyPage = () => {
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!form.latitude || !form.longitude) {
+      toast.error('Pin current location before continuing');
+      return;
+    }
     setSubmitting(true);
     try {
       const r = await api.post('/auditor/properties', form);
@@ -72,7 +94,7 @@ const NewPropertyPage = () => {
 
   return (
     <div className="app-shell">
-      <TopBar title="New Audit · Phase 1" />
+      <TopBar title="New Audit - Phase 1" />
       <form onSubmit={submit} className="flex-1 space-y-4 overflow-y-auto p-4 pb-24">
         <Field label="Property name">
           <Input required value={form.name} onChange={setField('name')} placeholder="e.g. Forest Spa Retreat" />
@@ -82,35 +104,20 @@ const NewPropertyPage = () => {
         </Field>
 
         <div className="rounded-2xl border border-slate-100 bg-white p-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Location</p>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setForm((f) => ({ ...f, locationMode: 'manual' }))}
-              className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium ${form.locationMode === 'manual' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600'}`}
-            >
-              <MapPin size={14} className="mr-1 inline" /> Manual
-            </button>
-            <button
-              type="button"
-              onClick={usePinned}
-              disabled={pinning}
-              className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium disabled:opacity-50 ${form.locationMode === 'pinned' ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-slate-200 text-slate-600'}`}
-            >
-              <Locate size={14} className="mr-1 inline" /> {pinning ? 'Pinning…' : 'Use current'}
-            </button>
-          </div>
-          {form.locationMode === 'manual' ? (
-            <Input
-              className="mt-2"
-              placeholder="e.g. Kochi, Kerala"
-              value={form.locationText}
-              onChange={setField('locationText')}
-            />
-          ) : (
-            <p className="mt-2 text-xs text-slate-500">
-              Pinned to <strong className="text-slate-700">{form.latitude || '—'}, {form.longitude || '—'}</strong>
-            </p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Pinned current location</p>
+          <button
+            type="button"
+            onClick={usePinned}
+            disabled={pinning}
+            className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-brand-500 bg-brand-50 px-3 py-2 text-xs font-semibold text-brand-700 disabled:opacity-50"
+          >
+            <Locate size={14} /> {pinning ? 'Pinning...' : 'Use current location'}
+          </button>
+          {form.latitude && form.longitude && (
+            <div className="mt-2 rounded-lg bg-slate-50 p-2 text-xs text-slate-600">
+              <p className="font-semibold text-slate-800">{form.locationText || form.address}</p>
+              <p className="mt-1">{form.latitude}, {form.longitude}</p>
+            </div>
           )}
         </div>
 
@@ -126,7 +133,7 @@ const NewPropertyPage = () => {
         <Field label="Number of rooms">
           <Input type="number" min={1} value={form.numberOfRooms} onChange={setField('numberOfRooms')} />
         </Field>
-        <Field label="Pricing" hint="e.g. ₹2500 / night">
+        <Field label="Pricing" hint="e.g. Rs 2500 / night">
           <Input value={form.pricing} onChange={setField('pricing')} />
         </Field>
 
