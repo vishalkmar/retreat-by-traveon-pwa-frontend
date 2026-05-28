@@ -11,7 +11,8 @@ const LoginPage = () => {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { login } = useAuth();
-  const role = params.get('role') === 'officer' ? 'officer' : 'auditor';
+  const requested = params.get('role');
+  const role = ['officer', 'salesperson'].includes(requested) ? requested : 'auditor';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,7 +25,13 @@ const LoginPage = () => {
       const r = await api.post('/auth/login', { role, email, password });
       const data = r.data?.data;
       if (data?.requiresEmailVerification) {
-        toast('Verify your email to continue', { icon: 'lock' });
+        if (data.devCode) {
+          toast.success(`Dev code: ${data.devCode}`, { duration: 8000 });
+        } else if (data.emailDelivered === false) {
+          toast('Email service unreachable — check server console for the code', { duration: 6000 });
+        } else {
+          toast('Verify your email to continue', { icon: 'lock' });
+        }
         navigate(`/login/otp?role=${role}&email=${encodeURIComponent(email)}`);
         return;
       }
@@ -38,9 +45,13 @@ const LoginPage = () => {
     }
   };
 
-  const title = role === 'officer' ? 'Centralized Officer Login' : 'Auditor Login';
-  const subtitle = role === 'officer'
-    ? 'Sign in to review property audits.'
+  const title =
+    role === 'officer' ? 'Centralized Officer Login'
+    : role === 'salesperson' ? 'Salesperson Login'
+    : 'Auditor Login';
+  const subtitle =
+    role === 'officer' ? 'Sign in to review property audits.'
+    : role === 'salesperson' ? 'Sign in to work your availability leads.'
     : 'Sign in to start auditing properties on-site.';
 
   return (

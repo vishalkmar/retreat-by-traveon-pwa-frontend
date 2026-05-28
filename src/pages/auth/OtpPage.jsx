@@ -67,8 +67,15 @@ const OtpPage = () => {
   const resend = async () => {
     setResending(true);
     try {
-      await api.post('/auth/resend-otp', { role, email });
-      toast.success('Code re-sent');
+      const r = await api.post('/auth/resend-otp', { role, email });
+      const data = r.data?.data || {};
+      if (data.devCode) {
+        toast.success(`Dev code: ${data.devCode}`, { duration: 8000 });
+      } else if (data.emailDelivered === false) {
+        toast('Email service unreachable — check the server console for the code', { duration: 6000 });
+      } else {
+        toast.success('Code re-sent');
+      }
     } catch (err) {
       toast.error(apiMessage(err, 'Could not resend'));
     } finally {

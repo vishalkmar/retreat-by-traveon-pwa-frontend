@@ -11,11 +11,10 @@ import PhotoUploader from '../../components/PhotoUploader.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
 import { usePropertyRoom, useSocket } from '../../context/SocketContext.jsx';
 
-// Single-section editor. We load the parent property once to find this
-// section's current state, then save through PUT
-// /auditor/properties/:id/sections/:sectionKey as multipart.
+// Owner-side mirror of auditor/SectionEditPage. Same UX, the only thing
+// that differs is the API base.
 
-const SectionEditPage = () => {
+const SelfSectionEditPage = () => {
   const { id, sectionKey } = useParams();
   const navigate = useNavigate();
   const section = SECTIONS.find((s) => s.key === sectionKey);
@@ -38,7 +37,7 @@ const SectionEditPage = () => {
 
   const load = useCallback(async () => {
     try {
-      const r = await api.get(`/auditor/properties/${id}`);
+      const r = await api.get(`/owner/properties/by-id/${id}`);
       const p = r.data?.data?.property;
       setProperty(p);
       const f = (p.fields || []).find((x) => x.sectionKey === sectionKey) || null;
@@ -61,16 +60,12 @@ const SectionEditPage = () => {
     if (!socket) return undefined;
     const onReview = (payload) => {
       if (payload?.sectionKey === sectionKey) {
-        toast(payload.review?.decision === 'rejected' ? 'Officer raised an objection' : 'Officer reviewed this section');
+        toast(payload.review?.decision === 'rejected' ? 'Reviewer raised an objection' : 'Reviewer reviewed this section');
         load();
       }
     };
     socket.on('property:field-review', onReview);
-    socket.on('property:suggestion', load);
-    return () => {
-      socket.off('property:field-review', onReview);
-      socket.off('property:suggestion', load);
-    };
+    return () => { socket.off('property:field-review', onReview); };
   }, [socket, sectionKey, load]);
 
   const save = async () => {
@@ -85,7 +80,7 @@ const SectionEditPage = () => {
       if (removedUrls.length) fd.append('removeUrls', removedUrls.join(','));
       pending.forEach((f) => fd.append('photos', f));
 
-      await api.put(`/auditor/properties/${id}/sections/${sectionKey}`, fd, {
+      await api.put(`/owner/self-properties/${id}/sections/${sectionKey}`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       toast.success('Saved');
@@ -115,7 +110,7 @@ const SectionEditPage = () => {
 
         {review?.decision === 'rejected' && review.comment && (
           <div className="mt-3 rounded-lg bg-rose-50 p-3 text-xs text-rose-900">
-            <strong className="block">Officer raised an objection:</strong>
+            <strong className="block">Reviewer raised an objection:</strong>
             {review.comment}
           </div>
         )}
@@ -159,10 +154,9 @@ const SectionEditPage = () => {
             </Button>
           )}
         </div>
-
       </main>
     </div>
   );
 };
 
-export default SectionEditPage;
+export default SelfSectionEditPage;

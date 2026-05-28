@@ -17,7 +17,11 @@ const ProtectedRoute = ({ roles, children }) => {
   }
   if (roles && !roles.includes(role)) {
     // Wrong role for this route — bounce to that role's home.
-    const home = role === 'officer' ? '/officer' : role === 'owner' ? '/owner' : '/auditor';
+    const home =
+      role === 'officer' ? '/officer'
+      : role === 'owner' ? '/owner'
+      : role === 'salesperson' ? '/salesperson'
+      : '/auditor';
     return <Navigate to={home} replace />;
   }
   return children;

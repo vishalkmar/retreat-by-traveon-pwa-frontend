@@ -7,33 +7,46 @@ import TopBar from '../../components/shell/TopBar.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
 
-// One row per (property, section) that currently has an unresolved
-// objection. Tapping a row jumps the auditor straight into the section
-// editor so they can re-upload without first opening the property detail.
-//
-// We also surface "approved with a note" reviews — those are technically
-// approved but still need attention later, and the auditor wants to see
-// them in the same triage view.
+// Owner-side mirror of the auditor's Objections triage view, scoped to
+// the owner's self-onboarded properties. Each row jumps to the section
+// editor under /owner/self/:id/sections/:key so the owner can fix it.
 
 const sectionLabel = (key) => SECTIONS.find((s) => s.key === key)?.label || key;
 
-const ObjectionsPage = () => {
+const OwnerObjectionsPage = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let alive = true;
-    // Pull every property in `following` (in_revision + in_review) so we
-    // can show both rejections and approve-with-note rows.
-    api.get('/auditor/properties', { params: { status: 'following' } })
+    api.get('/owner/properties', { params: { source: 'self', status: 'following' } })
       .then((r) => { if (alive) setItems(r.data?.data?.items || []); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, []);
 
-  // Flatten properties → one row per problematic review section.
+  // The /owner/properties endpoint doesn't include reviews — fetch each
+  // property's detail to grab the per-section decisions. This is a small
+  // number of properties so a sequential fetch is fine.
+  const [details, setDetails] = useState({});
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const acc = {};
+      for (const p of items) {
+        try {
+          const r = await api.get(`/owner/properties/by-id/${p.id}`);
+          if (!alive) return;
+          acc[p.id] = r.data?.data?.property?.reviews || [];
+        } catch { acc[p.id] = []; }
+      }
+      if (alive) setDetails(acc);
+    })();
+    return () => { alive = false; };
+  }, [items]);
+
   const rows = items.flatMap((p) =>
-    (p.reviews || [])
+    (details[p.id] || [])
       .filter((r) => r.decision === 'rejected' || (r.decision === 'approved' && r.approvedForFutureReview))
       .map((r) => ({ property: p, review: r })),
   );
@@ -64,7 +77,7 @@ const ObjectionsPage = () => {
           <EmptyState
             icon={AlertOctagon}
             title="No objections"
-            detail="Nothing flagged by an officer right now."
+            detail="Centralize hasn't flagged anything on your self-onboarded properties."
           />
         ) : (
           <ul className="flex flex-col gap-2">
@@ -77,7 +90,7 @@ const ObjectionsPage = () => {
               return (
                 <li key={`${property.id}-${review.sectionKey}`}>
                   <Link
-                    to={`/auditor/properties/${property.id}/sections/${review.sectionKey}`}
+                    to={`/owner/self/${property.id}/sections/${review.sectionKey}`}
                     className={`flex items-start gap-3 rounded-2xl border bg-white p-3 shadow-card hover:brightness-105 ${tone.border}`}
                   >
                     <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${tone.iconBg}`}>
@@ -116,4 +129,4 @@ const ObjectionsPage = () => {
   );
 };
 
-export default ObjectionsPage;
+export default OwnerObjectionsPage;

@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { Upload, FileText, FileCheck2, User as UserIcon, Phone, Mail, MapPin, BedDouble, IndianRupee } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import {
+  FileSignature, Upload, FileCheck2, Sparkles, ChevronRight,
+  User as UserIcon, Phone, Mail, MapPin, BedDouble, IndianRupee,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
-import { api, apiMessage } from '../../services/api.js';
+import { api } from '../../services/api.js';
 import TopBar from '../../components/shell/TopBar.jsx';
-import Button from '../../components/ui/Button.jsx';
 import StatusPill from '../../components/ui/StatusPill.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
+import PhaseTracker from '../../components/PhaseTracker.jsx';
+
+// Landing page for an auditor-linked property. Tabs let the owner jump
+// between contract steps, property facts, and the auditor's profile. The
+// Contract tab is now a hub of three quick-link cards pointing into the
+// dedicated step pages — no more mixed view + upload on one screen.
 
 const InfoRow = ({ icon: Icon, label, value }) => (
   <div className="flex items-start gap-2 text-sm">
@@ -29,8 +37,6 @@ const OwnerPropertyDetailPage = () => {
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('contract');
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
@@ -45,36 +51,19 @@ const OwnerPropertyDetailPage = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  const uploadSigned = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append('signed', file);
-      await api.post(`/owner/properties/${code}/sign-upload`, fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      toast.success('Signed contract uploaded');
-      await load();
-    } catch (err) {
-      toast.error(apiMessage(err, 'Upload failed'));
-    } finally {
-      setUploading(false);
-      e.target.value = '';
-    }
-  };
-
   if (loading) return <div className="app-shell"><LoadingScreen /></div>;
   if (!property) return null;
 
-  const contract = property.contract;
-  const signed = !!contract?.signedPdfUrl;
+  const contract = property.contract || {};
+  const receivedReady = !!contract.sentAt;
+  const uploadReady = !!contract.sentAt; // upload page is reachable any time the contract was sent
+  const signed = !!contract.signedPdfUrl;
+  const live = property.status === 'completed';
 
   return (
     <div className="app-shell">
       <TopBar title={property.name} />
-      <main className="flex-1 overflow-y-auto p-3 pb-12">
+      <main className="flex-1 overflow-y-auto p-3 pb-24">
         <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-card">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
@@ -82,6 +71,18 @@ const OwnerPropertyDetailPage = () => {
               <p className="truncate text-xs text-slate-500">{property.propertyCode}</p>
             </div>
             <StatusPill status={property.status} />
+          </div>
+        </section>
+
+        <section className="mt-3">
+          <p className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Phase progress</p>
+          <div className="mt-2">
+            <PhaseTracker
+              role="owner"
+              propertyId={property.id}
+              propertyCode={property.propertyCode}
+              status={property.status}
+            />
           </div>
         </section>
 
@@ -98,73 +99,47 @@ const OwnerPropertyDetailPage = () => {
         </div>
 
         {tab === 'contract' && (
-          <section className="mt-4 space-y-3">
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-card">
-              <div className="flex items-center gap-3">
-                <span className="grid h-10 w-10 place-items-center rounded-xl bg-rose-50 text-rose-700">
-                  <FileText size={18} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-900">Onboarding contract</p>
-                  <p className="text-xs text-slate-500">
-                    {contract?.sentAt
-                      ? `Sent ${new Date(contract.sentAt).toLocaleDateString()}`
-                      : 'Preparing…'}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-3 text-xs text-slate-600">
-                We've emailed the contract PDF to <strong>{property.ownerEmail}</strong>. Print it,
-                sign it, scan or photograph it, then upload the signed copy below.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-card">
-              <div className="flex items-center gap-3">
-                <span className={`grid h-10 w-10 place-items-center rounded-xl ${signed ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                  {signed ? <FileCheck2 size={18} /> : <Upload size={18} />}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-900">
-                    {signed ? 'Signed copy uploaded' : 'Upload signed copy'}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {signed
-                      ? `Uploaded ${new Date(contract.signedAt).toLocaleDateString()}`
-                      : 'Accepts PDF or photo (JPG/PNG).'}
-                  </p>
-                </div>
-              </div>
-              {signed && (
-                <a
-                  href={contract.signedPdfUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 inline-block text-xs font-semibold text-emerald-700 underline"
-                >
-                  View uploaded signed contract
-                </a>
-              )}
-              {!signed && (
-                <>
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="application/pdf,.pdf,image/jpeg,image/png,.jpg,.jpeg,.png"
-                    hidden
-                    onChange={uploadSigned}
-                  />
-                  <Button
-                    size="block"
-                    className="mt-3"
-                    onClick={() => fileRef.current?.click()}
-                    loading={uploading}
-                  >
-                    <Upload size={16} /> Choose signed file
-                  </Button>
-                </>
-              )}
-            </div>
+          <section className="mt-4 space-y-2">
+            <StepCard
+              to={receivedReady ? `/owner/properties/${code}/received-contract` : null}
+              disabled={!receivedReady}
+              icon={FileSignature}
+              iconCls="bg-rose-100 text-rose-700"
+              title="Received contract"
+              subtitle={
+                receivedReady
+                  ? `Released on ${new Date(contract.sentAt).toLocaleDateString()} — preview the PDF and read terms.`
+                  : 'Your auditor has not released the contract yet.'
+              }
+            />
+            <StepCard
+              to={uploadReady ? `/owner/properties/${code}/upload-signed` : null}
+              disabled={!uploadReady}
+              icon={signed ? FileCheck2 : Upload}
+              iconCls={signed ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}
+              title={signed ? 'Sent contract' : 'Upload signed copy'}
+              subtitle={
+                signed
+                  ? `Uploaded on ${new Date(contract.signedAt).toLocaleDateString()} — re-upload from here if needed.`
+                  : uploadReady
+                    ? 'Sign the PDF then upload it here. Auditor gets the confirmation.'
+                    : 'Available once the contract has been released to you.'
+              }
+            />
+            <StepCard
+              to={signed ? `/owner/properties/${code}/final-preview` : null}
+              disabled={!signed}
+              icon={Sparkles}
+              iconCls={live ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-500'}
+              title="Final preview"
+              subtitle={
+                live
+                  ? 'Listing is live — view the full onboarding summary.'
+                  : signed
+                    ? 'Listing flips live the moment we finalize — preview your record here.'
+                    : 'Unlocks after you upload the signed copy.'
+              }
+            />
           </section>
         )}
 
@@ -196,7 +171,7 @@ const OwnerPropertyDetailPage = () => {
                 </div>
               )}
               <div className="min-w-0">
-                <p className="truncate font-semibold text-slate-900">{property.auditor?.name}</p>
+                <p className="truncate font-semibold text-slate-900">{property.auditor?.name || '—'}</p>
                 <p className="truncate text-xs text-slate-500">{property.auditor?.email}</p>
                 {property.auditor?.phone && (
                   <p className="truncate text-xs text-slate-500">{property.auditor.phone}</p>
@@ -210,6 +185,33 @@ const OwnerPropertyDetailPage = () => {
         )}
       </main>
     </div>
+  );
+};
+
+const StepCard = ({ to, disabled, icon: Icon, iconCls, title, subtitle }) => {
+  const inner = (
+    <div className="flex items-start gap-3">
+      <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${iconCls}`}>
+        <Icon size={18} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className={`font-semibold ${disabled ? 'text-slate-400' : 'text-slate-900'}`}>{title}</p>
+        <p className={`mt-0.5 text-xs ${disabled ? 'text-slate-400' : 'text-slate-500'}`}>{subtitle}</p>
+      </div>
+      {!disabled && <ChevronRight size={18} className="mt-2 shrink-0 text-slate-300" />}
+    </div>
+  );
+  if (disabled) {
+    return (
+      <div className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 cursor-not-allowed">
+        {inner}
+      </div>
+    );
+  }
+  return (
+    <Link to={to} className="block rounded-2xl border border-slate-100 bg-white p-4 shadow-card transition hover:border-rose-200">
+      {inner}
+    </Link>
   );
 };
 

@@ -1,18 +1,26 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Hash, Mail } from 'lucide-react';
+import { Mail, User, Phone } from 'lucide-react';
 import { api, apiMessage } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Field, { Input } from '../../components/ui/Field.jsx';
 
+/*
+  Single owner login flow: email → OTP. On first verify the form also
+  captures the owner's name and (optionally) phone. After login the owner
+  picks a mode in their dashboard (auditor-linked properties vs.
+  self-onboarded ones), so a single login type is enough.
+*/
+
 const OwnerLoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [step, setStep] = useState(1);
-  const [propertyCode, setPropertyCode] = useState('');
   const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [code, setCode] = useState(['', '', '', '', '', '']);
   const [submitting, setSubmitting] = useState(false);
   const refs = useRef([]);
@@ -21,8 +29,19 @@ const OwnerLoginPage = () => {
     e?.preventDefault?.();
     setSubmitting(true);
     try {
-      await api.post('/auth/owner/request-otp', { propertyCode: propertyCode.trim(), email });
-      toast.success('Code sent');
+      const r = await api.post('/auth/owner/email/request-otp', { email: email.trim() });
+      const data = r.data?.data || {};
+      if (data.emailDelivered === false) {
+        // Email genuinely failed (Brevo not configured / sender not verified
+        // / quota / IP whitelist). Show the underlying reason loud so the
+        // dev can fix the env, plus the dev code as a temporary unlock.
+        toast.error(`Email failed: ${data.emailError || 'unknown'}`, { duration: 10000 });
+        if (data.devCode) {
+          toast(`Dev code: ${data.devCode}`, { duration: 12000, icon: '🔑' });
+        }
+      } else {
+        toast.success('Code sent to your email');
+      }
       setStep(2);
       setTimeout(() => refs.current[0]?.focus(), 50);
     } catch (err) {
@@ -47,10 +66,11 @@ const OwnerLoginPage = () => {
     if (joined.length !== 6) return toast.error('Enter the 6-digit code');
     setSubmitting(true);
     try {
-      const r = await api.post('/auth/owner/verify-otp', {
-        propertyCode: propertyCode.trim(),
-        email,
+      const r = await api.post('/auth/owner/email/verify-otp', {
+        email: email.trim(),
         code: joined,
+        name: name.trim(),
+        phone: phone.trim(),
       });
       const data = r.data?.data;
       login(data.token, data.role, data.user);
@@ -66,12 +86,12 @@ const OwnerLoginPage = () => {
   return (
     <div className="app-shell">
       <main className="app-launch flex flex-1 flex-col justify-center p-6 safe-top safe-bottom">
-        <header className="mb-8 text-center">
+        <header className="mb-6 text-center">
           <img src="/retreatlogo.png" alt="Retreats by Traveon" className="mx-auto h-20 w-auto object-contain" />
           <h1 className="mt-5 text-2xl font-bold text-slate-950">Property Owner Login</h1>
           <p className="mt-2 text-sm text-slate-500">
             {step === 1
-              ? 'Enter your Property ID and registered email.'
+              ? 'Sign in with your email — you can self-onboard or view properties your auditor added.'
               : `Enter the code sent to ${email}.`}
           </p>
         </header>
@@ -79,18 +99,6 @@ const OwnerLoginPage = () => {
         <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-card">
           {step === 1 ? (
             <form onSubmit={requestOtp} className="flex flex-col gap-4">
-              <Field label="Property ID" hint="Looks like RTV-XXXXXXXX">
-                <div className="relative">
-                  <Hash size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    required
-                    value={propertyCode}
-                    onChange={(e) => setPropertyCode(e.target.value.toUpperCase())}
-                    placeholder="RTV-ABCDEFGH"
-                    className="pl-9 uppercase tracking-wider"
-                  />
-                </div>
-              </Field>
               <Field label="Email">
                 <div className="relative">
                   <Mail size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -126,6 +134,35 @@ const OwnerLoginPage = () => {
                   />
                 ))}
               </div>
+
+              <div className="mt-5 space-y-3">
+                <p className="text-[11px] uppercase tracking-wider text-slate-500">
+                  First time? Tell us about you
+                </p>
+                <Field label="Your name" hint="Required on first login">
+                  <div className="relative">
+                    <User size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="pl-9"
+                      placeholder="Full name"
+                    />
+                  </div>
+                </Field>
+                <Field label="Mobile (optional)">
+                  <div className="relative">
+                    <Phone size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="pl-9"
+                      placeholder="+91…"
+                    />
+                  </div>
+                </Field>
+              </div>
+
               <Button onClick={verify} size="block" loading={submitting} className="mt-6">
                 Verify and continue
               </Button>
@@ -133,7 +170,7 @@ const OwnerLoginPage = () => {
                 onClick={() => setStep(1)}
                 className="mt-3 w-full text-center text-xs font-semibold text-slate-500 hover:underline"
               >
-                Use a different Property ID
+                Use a different email
               </button>
             </>
           )}

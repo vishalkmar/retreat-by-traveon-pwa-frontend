@@ -11,11 +11,11 @@ import StatusPill from '../../components/ui/StatusPill.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
 import { usePropertyRoom, useSocket } from '../../context/SocketContext.jsx';
 
-// Phase 3 capture grid. Lists every section with its current state (photo
-// count, notes, officer's decision/comment). Tapping a section opens its
-// editor. Submit button enabled once all required sections have content.
+// Owner-driven Phase 3. Identical UX to the auditor version; only the API
+// endpoints differ — owners hit /owner/self-properties/* instead of
+// /auditor/properties/*.
 
-const CapturePage = () => {
+const SelfCapturePage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [property, setProperty] = useState(null);
@@ -26,7 +26,7 @@ const CapturePage = () => {
 
   const load = useCallback(async () => {
     try {
-      const r = await api.get(`/auditor/properties/${id}`);
+      const r = await api.get(`/owner/properties/by-id/${id}`);
       setProperty(r.data?.data?.property);
     } catch (err) {
       toast.error(apiMessage(err, 'Could not load'));
@@ -42,11 +42,9 @@ const CapturePage = () => {
     const onUpdate = () => load();
     socket.on('property:field-review', onUpdate);
     socket.on('property:status', onUpdate);
-    socket.on('property:suggestion', onUpdate);
     return () => {
       socket.off('property:field-review', onUpdate);
       socket.off('property:status', onUpdate);
-      socket.off('property:suggestion', onUpdate);
     };
   }, [socket, load]);
 
@@ -77,7 +75,7 @@ const CapturePage = () => {
   const submit = async () => {
     setSubmitting(true);
     try {
-      const r = await api.post(`/auditor/properties/${id}/submit`);
+      const r = await api.post(`/owner/self-properties/${id}/submit`);
       setProperty(r.data?.data?.property);
       toast.success('Submitted for review');
     } catch (err) {
@@ -107,14 +105,8 @@ const CapturePage = () => {
           </div>
           {property.officerSuggestion && (
             <div className="mt-3 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-900">
-              <strong className="block">Officer suggestion</strong>
+              <strong className="block">Reviewer suggestion</strong>
               {property.officerSuggestion}
-            </div>
-          )}
-          {property.rejectedReason && (
-            <div className="mt-3 rounded-lg bg-rose-50 p-2.5 text-xs text-rose-900">
-              <strong className="block">Final rejected:</strong>
-              {property.rejectedReason}
             </div>
           )}
         </section>
@@ -142,7 +134,7 @@ const CapturePage = () => {
                     ? r.comment
                     : null
                 }
-                onClick={canEdit ? () => navigate(`/auditor/properties/${id}/sections/${s.key}`) : null}
+                onClick={canEdit ? () => navigate(`/owner/self/${id}/sections/${s.key}`) : null}
               />
             );
           })}
@@ -152,15 +144,15 @@ const CapturePage = () => {
           <div className="mt-6">
             <Button
               size="block"
-              onClick={submit}
-              loading={submitting}
               disabled={!allRequiredFilled}
+              loading={submitting}
+              onClick={submit}
             >
-              <Send size={16} /> {property.status === 'in_revision' ? 'Save follow-up' : 'Submit for review'}
+              <Send size={16} /> Submit for review
             </Button>
             {!allRequiredFilled && (
-              <p className="mt-2 text-center text-[11px] text-rose-600">
-                Fill every required section with notes and the required minimum live uploaded photos.
+              <p className="mt-2 text-center text-[11px] text-slate-500">
+                Fill notes + photos for every required section to unlock submit.
               </p>
             )}
           </div>
@@ -170,4 +162,4 @@ const CapturePage = () => {
   );
 };
 
-export default CapturePage;
+export default SelfCapturePage;

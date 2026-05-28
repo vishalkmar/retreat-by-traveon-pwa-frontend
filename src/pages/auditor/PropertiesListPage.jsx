@@ -6,6 +6,7 @@ import TopBar from '../../components/shell/TopBar.jsx';
 import StatusPill from '../../components/ui/StatusPill.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
 import EmptyState from '../../components/EmptyState.jsx';
+import PhaseTracker from '../../components/PhaseTracker.jsx';
 
 const TABS = [
   { key: 'all', label: 'All' },
@@ -67,6 +68,9 @@ const PropertiesListPage = () => {
                       </p>
                     </div>
                     <StatusPill status={p.status} />
+                  </div>
+                  <div className="mt-3">
+                    <PhaseTracker role="auditor" propertyId={p.id} status={p.status} />
                   </div>
                 </Link>
               </li>

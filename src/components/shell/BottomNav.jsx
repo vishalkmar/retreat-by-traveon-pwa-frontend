@@ -4,8 +4,10 @@ import { NavLink } from 'react-router-dom';
 // route file controls its own information architecture.
 
 const BottomNav = ({ items }) => (
-  <nav className="sticky bottom-0 z-10 grid border-t border-slate-100 bg-white safe-bottom"
-       style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
+  <nav
+    className="sticky bottom-0 z-10 mx-auto grid w-full max-w-[28rem] border-t border-slate-100 bg-white safe-bottom"
+    style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+  >
     {items.map(({ to, label, icon: Icon, end }) => (
       <NavLink
         key={to}

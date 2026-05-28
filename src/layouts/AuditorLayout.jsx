@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import { Home, ClipboardList, AlertOctagon, User } from 'lucide-react';
 import BottomNav from '../components/shell/BottomNav.jsx';
 
@@ -9,16 +9,13 @@ const TABS = [
   { to: '/auditor/profile', label: 'Profile', icon: User },
 ];
 
-const AuditorLayout = () => {
-  const { pathname } = useLocation();
-  // Hide bottom nav on deep capture screens to keep focus on the form.
-  const showNav = !/\/auditor\/properties\/.+\/(capture|generate-id|sections\/.+)/.test(pathname);
-  return (
-    <div className="flex min-h-[100dvh] flex-col">
-      <Outlet />
-      {showNav && <BottomNav items={TABS} />}
-    </div>
-  );
-};
+const AuditorLayout = () => (
+  // Bottom nav is always visible so the auditor can switch tabs even from
+  // inside a deep capture/section screen.
+  <div className="flex min-h-[100dvh] flex-col">
+    <Outlet />
+    <BottomNav items={TABS} />
+  </div>
+);
 
 export default AuditorLayout;

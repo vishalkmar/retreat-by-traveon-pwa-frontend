@@ -1,37 +1,42 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { useAuth } from './AuthContext.jsx';
 import { getSocket, closeSocket } from '../services/socket.js';
 
 // Lifts a single Socket.io connection up to the tree so any screen can
 // subscribe via useSocket(). The connection is rebuilt whenever the auth
-// token changes (login/logout/role-switch).
+// token changes (login/logout/role-switch). We store the socket in state so
+// consumers re-render the moment it is available — a ref would silently
+// hand them `null` on the first mount.
 
 const SocketCtx = createContext({ socket: null, connected: false });
 
 export const SocketProvider = ({ children }) => {
   const { user, role } = useAuth();
+  const [socket, setSocket] = useState(null);
   const [connected, setConnected] = useState(false);
-  const sockRef = useRef(null);
 
   useEffect(() => {
     if (!user || !role) {
       closeSocket();
-      sockRef.current = null;
+      setSocket(null);
       setConnected(false);
-      return;
+      return undefined;
     }
     const s = getSocket();
-    sockRef.current = s;
-    s.on('connect', () => setConnected(true));
-    s.on('disconnect', () => setConnected(false));
+    setSocket(s);
+    const onConnect = () => setConnected(true);
+    const onDisconnect = () => setConnected(false);
+    s.on('connect', onConnect);
+    s.on('disconnect', onDisconnect);
+    if (s.connected) setConnected(true);
     return () => {
-      s.off('connect');
-      s.off('disconnect');
+      s.off('connect', onConnect);
+      s.off('disconnect', onDisconnect);
     };
   }, [user, role]);
 
   return (
-    <SocketCtx.Provider value={{ socket: sockRef.current, connected }}>
+    <SocketCtx.Provider value={{ socket, connected }}>
       {children}
     </SocketCtx.Provider>
   );

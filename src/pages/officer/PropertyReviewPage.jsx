@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { Check, X, ChevronDown, ChevronUp, RefreshCcw, ShieldCheck, ShieldX, User, MapPin, Phone, Mail, BedDouble, IndianRupee } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Check, X, AlertTriangle, ChevronDown, ChevronUp, RefreshCcw, ShieldCheck, ShieldX, User, MapPin, Phone, Mail, BedDouble, IndianRupee } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, apiMessage } from '../../services/api.js';
 import { SECTIONS } from '../../config.js';
@@ -8,8 +8,8 @@ import TopBar from '../../components/shell/TopBar.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Field, { Textarea } from '../../components/ui/Field.jsx';
 import StatusPill from '../../components/ui/StatusPill.jsx';
-import ChatThread from '../../components/ChatThread.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
+import PhaseTracker from '../../components/PhaseTracker.jsx';
 import { usePropertyRoom, useSocket } from '../../context/SocketContext.jsx';
 
 // The officer's review console. Every section is an accordion: tap to
@@ -30,45 +30,124 @@ const Photos = ({ urls }) => {
   );
 };
 
-const SectionReview = ({ propertyId, section, field, review, locked, onChange }) => {
+// Collapsible history of previous uploads so the officer can compare
+// what the auditor sent before vs. after each revision.
+const UploadHistory = ({ history }) => {
   const [open, setOpen] = useState(false);
+  if (!Array.isArray(history) || history.length === 0) return null;
+  const sorted = [...history].sort((a, b) => (b.iteration || 0) - (a.iteration || 0));
+  return (
+    <details
+      open={open}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
+      className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs"
+    >
+      <summary className="cursor-pointer font-semibold text-slate-600">
+        Previous uploads ({history.length} {history.length === 1 ? 'version' : 'versions'})
+      </summary>
+      <div className="mt-2 space-y-3">
+        {sorted.map((entry, idx) => (
+          <div key={`${entry.iteration}-${idx}`} className="rounded-lg bg-white p-2 ring-1 ring-slate-200">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold text-slate-700">
+                Rev {entry.iteration || idx + 1}
+              </p>
+              {entry.snapshotAt && (
+                <p className="text-[10px] text-slate-400">
+                  {new Date(entry.snapshotAt).toLocaleString([], {
+                    dateStyle: 'medium', timeStyle: 'short',
+                  })}
+                </p>
+              )}
+            </div>
+            {entry.reviewComment && (
+              <p className="mt-1 rounded-md bg-rose-50 px-2 py-1 text-[11px] text-rose-700">
+                Objection then: {entry.reviewComment}
+              </p>
+            )}
+            {entry.description && (
+              <p className="mt-1 whitespace-pre-wrap text-[11px] text-slate-600">
+                {entry.description}
+              </p>
+            )}
+            <div className="mt-1.5">
+              <Photos urls={entry.photoUrls || []} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+};
+
+const SectionReview = ({ propertyId, section, field, review, locked, onChange, autoOpen }) => {
+  const [open, setOpen] = useState(!!autoOpen);
   const [comment, setComment] = useState(review?.comment || '');
-  const [showRejectInput, setShowRejectInput] = useState(false);
+  // 'reject' | 'approve_objection' | null — controls which note input is showing.
+  const [pendingMode, setPendingMode] = useState(null);
   const [busyDecision, setBusyDecision] = useState(null);
-  const [approvedForFutureReview, setApprovedForFutureReview] = useState(!!review?.approvedForFutureReview);
+  const cardRef = useRef(null);
 
   const decision = review?.decision || (field ? 'pending' : 'not_started');
 
   useEffect(() => {
     setComment(review?.comment || '');
-    setApprovedForFutureReview(!!review?.approvedForFutureReview);
-    setShowRejectInput(false);
+    setPendingMode(null);
   }, [review?.comment, review?.approvedForFutureReview, review?.decision]);
 
-  const decide = async (next) => {
-    if (next === 'rejected' && !showRejectInput) {
-      setShowRejectInput(true);
+  // When the page tells us this is the deep-linked section, open it and
+  // scroll into view so the officer doesn't have to hunt for it.
+  useEffect(() => {
+    if (autoOpen) {
+      setOpen(true);
+      const t = setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [autoOpen]);
+
+  // `mode` is one of: 'approved' | 'rejected' | 'approve_objection'
+  const decide = async (mode) => {
+    if (mode === 'rejected' && pendingMode !== 'reject') {
+      setPendingMode('reject');
       setOpen(true);
       return;
     }
-    if (next === 'rejected' && !comment.trim()) {
-      toast.error('Please add a comment explaining the objection');
+    if (mode === 'approve_objection' && pendingMode !== 'approve_objection') {
+      setPendingMode('approve_objection');
+      setOpen(true);
       return;
     }
-    if (next === 'approved' && decision === 'approved') return;
-    setBusyDecision(next);
+    if ((mode === 'rejected' || mode === 'approve_objection') && !comment.trim()) {
+      toast.error('Please add a note');
+      return;
+    }
+    if (mode === 'approved' && decision === 'approved' && !review?.approvedForFutureReview) return;
+
+    const busyKey = mode === 'approve_objection' ? 'approve_objection' : mode;
+    setBusyDecision(busyKey);
     try {
+      const body =
+        mode === 'rejected'
+          ? { decision: 'rejected', comment: comment.trim(), approvedForFutureReview: false }
+          : mode === 'approve_objection'
+            ? { decision: 'approved', comment: comment.trim(), approvedForFutureReview: true }
+            : { decision: 'approved', comment: null, approvedForFutureReview: false };
       const r = await api.patch(
         `/officer/properties/${propertyId}/fields/${section.key}/decision`,
-        {
-          decision: next,
-          comment: next === 'rejected' ? comment.trim() : null,
-          approvedForFutureReview: next === 'approved' ? approvedForFutureReview : false,
-        }
+        body,
       );
       onChange?.(r.data?.data);
-      toast.success(next === 'approved' ? 'Marked approved' : 'Objection raised');
-      setShowRejectInput(false);
+      toast.success(
+        mode === 'rejected'
+          ? 'Objection raised'
+          : mode === 'approve_objection'
+            ? 'Approved with note'
+            : 'Marked approved',
+      );
+      setPendingMode(null);
     } catch (err) {
       toast.error(apiMessage(err, 'Could not save'));
     } finally {
@@ -76,14 +155,21 @@ const SectionReview = ({ propertyId, section, field, review, locked, onChange })
     }
   };
 
+  const approvedWithObjection = decision === 'approved' && review?.approvedForFutureReview;
   const decisionPill =
-    decision === 'approved' ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Approved</span>
+    approvedWithObjection ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Approved · note</span>
+    : decision === 'approved' ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">Approved</span>
     : decision === 'rejected' ? <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700">Objection</span>
     : decision === 'pending' ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">Pending</span>
     : <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Empty</span>;
 
   return (
-    <div className="rounded-2xl border border-slate-100 bg-white shadow-card">
+    <div
+      ref={cardRef}
+      className={`rounded-2xl border bg-white shadow-card scroll-mt-16 ${
+        autoOpen ? 'border-amber-300 ring-2 ring-amber-100' : 'border-slate-100'
+      }`}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -113,47 +199,31 @@ const SectionReview = ({ propertyId, section, field, review, locked, onChange })
           </div>
           <Photos urls={field?.photoUrls || []} />
 
-          {showRejectInput && (
-            <Field label="Objection note">
+          <UploadHistory history={field?.photoHistory} />
+
+          {pendingMode && (
+            <Field label={pendingMode === 'reject' ? 'Objection note' : 'Note for the auditor'}>
               <Textarea
                 rows={3}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="What needs to change?"
+                placeholder={
+                  pendingMode === 'reject'
+                    ? 'What needs to change?'
+                    : 'What should be fixed in a future revision?'
+                }
               />
             </Field>
           )}
 
-          {!locked && showRejectInput ? (
-            <button
-              type="button"
-              disabled={busyDecision === 'rejected'}
-              onClick={() => decide('rejected')}
-              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
-            >
-              {busyDecision === 'rejected' && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
-              <X size={16} /> Raise now
-            </button>
-          ) : !locked && (
-            <div className="space-y-2">
-              <label className="flex items-start gap-2 rounded-lg bg-emerald-50 px-2 py-2 text-xs font-medium text-emerald-800">
-                <input
-                  type="checkbox"
-                  checked={approvedForFutureReview}
-                  onChange={(e) => setApprovedForFutureReview(e.target.checked)}
-                  className="mt-0.5"
-                />
-                Approved for future review
-              </label>
-              <div className="flex gap-2">
+          {!locked && pendingMode === 'reject' ? (
+            <div className="flex gap-2">
               <button
                 type="button"
-                disabled={busyDecision === 'approved' || decision === 'approved'}
-                onClick={() => decide('approved')}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+                onClick={() => { setPendingMode(null); setComment(review?.comment || ''); }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
               >
-                {busyDecision === 'approved' && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
-                <Check size={16} /> Approve
+                Cancel
               </button>
               <button
                 type="button"
@@ -161,16 +231,64 @@ const SectionReview = ({ propertyId, section, field, review, locked, onChange })
                 onClick={() => decide('rejected')}
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
               >
-              <X size={16} /> Raise objection
+                {busyDecision === 'rejected' && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+                <X size={16} /> Raise now
               </button>
-              </div>
+            </div>
+          ) : !locked && pendingMode === 'approve_objection' ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => { setPendingMode(null); setComment(review?.comment || ''); }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busyDecision === 'approve_objection'}
+                onClick={() => decide('approve_objection')}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+              >
+                {busyDecision === 'approve_objection' && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+                <Check size={16} /> Approve with note
+              </button>
+            </div>
+          ) : !locked && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                disabled={busyDecision === 'approved' || (decision === 'approved' && !approvedWithObjection)}
+                onClick={() => decide('approved')}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {busyDecision === 'approved' && <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+                <Check size={16} /> Approve
+              </button>
+              <button
+                type="button"
+                onClick={() => decide('approve_objection')}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-60"
+              >
+                <AlertTriangle size={16} /> Approve w/ objection
+              </button>
+              <button
+                type="button"
+                onClick={() => decide('rejected')}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+              >
+                <X size={16} /> Raise objection
+              </button>
             </div>
           )}
 
-          <details className="rounded-lg bg-slate-50 px-2 py-1.5 text-xs">
-            <summary className="cursor-pointer font-semibold text-slate-600">Discuss this section</summary>
-            <ChatThread endpoint="/officer" propertyId={propertyId} sectionKey={section.key} className="mt-2 !shadow-none" />
-          </details>
+          {approvedWithObjection && review?.comment && (
+            <div className="rounded-lg bg-amber-50 p-2 text-[11px] text-amber-900">
+              <strong className="block">Approved with note:</strong>
+              {review.comment}
+            </div>
+          )}
+
         </div>
       )}
     </div>
@@ -198,6 +316,8 @@ const PropertyReviewPage = () => {
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [busyFinal, setBusyFinal] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [searchParams] = useSearchParams();
+  const focusSection = searchParams.get('section') || '';
   const { socket } = useSocket();
   usePropertyRoom(property?.id);
 
@@ -311,7 +431,8 @@ const PropertyReviewPage = () => {
   if (loading) return <div className="app-shell"><LoadingScreen /></div>;
   if (!property) return null;
 
-  const locked = ['approved', 'contract_sent', 'contract_signed', 'completed', 'rejected'].includes(property.status);
+  const locked = ['approved', 'phase4_submitted', 'phase4_in_revision', 'final_approved', 'contract_sent', 'contract_signed', 'completed', 'rejected'].includes(property.status);
+  const phase4Pending = ['phase4_submitted', 'phase4_in_revision'].includes(property.status);
 
   return (
     <div className="app-shell">
@@ -322,7 +443,11 @@ const PropertyReviewPage = () => {
             <div className="min-w-0">
               <h2 className="truncate font-semibold text-slate-900">{property.name}</h2>
               <p className="truncate text-xs text-slate-500">{property.propertyCode}</p>
-              <p className="truncate text-xs text-slate-500">Audited by {property.auditor?.name}</p>
+              <p className="truncate text-xs text-slate-500">
+                {property.source === 'self'
+                  ? `Self-onboarded by ${property.ownerName || property.ownerEmail}`
+                  : `Audited by ${property.auditor?.name || '—'}`}
+              </p>
             </div>
             <StatusPill status={property.status} />
           </div>
@@ -336,6 +461,23 @@ const PropertyReviewPage = () => {
             <InfoRow icon={IndianRupee} label="Pricing" value={property.pricing} />
           </div>
         </section>
+
+        <section className="mt-3">
+          <p className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Phase progress</p>
+          <div className="mt-2">
+            <PhaseTracker role="officer" propertyId={property.id} status={property.status} />
+          </div>
+        </section>
+
+        {phase4Pending && (
+          <Button
+            size="block"
+            className="mt-4 bg-violet-700 hover:bg-violet-800 text-white"
+            onClick={() => navigate(`/officer/properties/${id}/phase4`)}
+          >
+            Review Phase 4 deep-dive
+          </Button>
+        )}
 
         <p className="mt-5 px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Review sections</p>
         {notifications.length > 0 && (
@@ -357,6 +499,7 @@ const PropertyReviewPage = () => {
               field={fieldByKey[s.key]}
               review={reviewByKey[s.key]}
               locked={locked}
+              autoOpen={focusSection === s.key}
               onChange={() => load()}
             />
           ))}
@@ -416,11 +559,6 @@ const PropertyReviewPage = () => {
             )}
           </section>
         )}
-
-        <section className="mt-6">
-          <p className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">General discussion</p>
-          <ChatThread endpoint="/officer" propertyId={property.id} sectionKey="general" className="mt-2" />
-        </section>
 
         {showRejectModal && (
           <div className="fixed inset-0 z-30 flex items-end bg-black/50 sm:items-center sm:justify-center">

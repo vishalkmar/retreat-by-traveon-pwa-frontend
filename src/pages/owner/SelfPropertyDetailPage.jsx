@@ -23,19 +23,19 @@ const InfoRow = ({ icon: Icon, label, value }) => (
   </div>
 );
 
-const PropertyDetailPage = () => {
+// Mirror of auditor's PropertyDetailPage for self-onboarded properties.
+const SelfPropertyDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [notifications, setNotifications] = useState([]);
   const { socket } = useSocket();
   const { items: bellItems } = useNotifications();
   usePropertyRoom(property?.id);
 
   const load = useCallback(async () => {
     try {
-      const r = await api.get(`/auditor/properties/${id}`);
+      const r = await api.get(`/owner/properties/by-id/${id}`);
       setProperty(r.data?.data?.property);
     } catch {
       toast.error('Could not load');
@@ -49,23 +49,11 @@ const PropertyDetailPage = () => {
   useEffect(() => {
     if (!socket) return undefined;
     const onUpdate = () => load();
-    const onFieldReview = (payload) => {
-      const label = SECTIONS.find((s) => s.key === payload?.sectionKey)?.label || 'A section';
-      const decision = payload?.review?.decision === 'rejected' ? 'objection raised' : 'review updated';
-      setNotifications((items) => [
-        { id: Date.now(), text: `${label}: ${decision}`, at: new Date().toLocaleTimeString() },
-        ...items,
-      ].slice(0, 5));
-      toast(`${label}: ${decision}`);
-      load();
-    };
     socket.on('property:status', onUpdate);
-    socket.on('property:field-review', onFieldReview);
-    socket.on('property:suggestion', onUpdate);
+    socket.on('property:field-review', onUpdate);
     return () => {
       socket.off('property:status', onUpdate);
-      socket.off('property:field-review', onFieldReview);
-      socket.off('property:suggestion', onUpdate);
+      socket.off('property:field-review', onUpdate);
     };
   }, [socket, load]);
 
@@ -77,8 +65,6 @@ const PropertyDetailPage = () => {
 
   const phase2Needed = !property.propertyCode;
   const phase3Open = property.propertyCode && ['phase1_done', 'in_revision'].includes(property.status);
-  // Phase 4 unlocks once Phase 3 is "semi-approved" (status === 'approved')
-  // and stays available until the property is final-approved or beyond.
   const phase4Open = ['approved', 'phase4_in_revision'].includes(property.status);
   const phase4Pending = property.status === 'phase4_submitted';
 
@@ -107,63 +93,25 @@ const PropertyDetailPage = () => {
         <section className="mt-3">
           <p className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Phase progress</p>
           <div className="mt-2">
-            <PhaseTracker role="auditor" propertyId={property.id} status={property.status} />
+            <PhaseTracker role="owner-self" propertyId={property.id} propertyCode={property.propertyCode} status={property.status} />
           </div>
         </section>
 
-        {(property.officerSuggestion || property.rejectedReason) && (
-          <section className="mt-3 space-y-2">
-            {property.officerSuggestion && (
-              <div className="rounded-2xl bg-amber-50 p-3 text-xs text-amber-900">
-                <strong className="block">Officer suggestion</strong>
-                {property.officerSuggestion}
-              </div>
-            )}
-            {property.rejectedReason && (
-              <div className="rounded-2xl bg-rose-50 p-3 text-xs text-rose-900">
-                <strong className="block">Final rejected</strong>
-                {property.rejectedReason}
-              </div>
-            )}
-          </section>
-        )}
-
-        {notifications.length > 0 && (
-          <section className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-amber-800">Live notifications</p>
-            <div className="mt-2 space-y-1">
-              {notifications.map((n) => (
-                <p key={n.id} className="text-xs text-amber-900">{n.text} <span className="text-amber-700">{n.at}</span></p>
-              ))}
-            </div>
-          </section>
-        )}
-
         {phase2Needed && (
-          <Button
-            size="block"
-            className="mt-4"
-            onClick={() => navigate(`/auditor/properties/${id}/generate-id`)}
-          >
+          <Button size="block" className="mt-4" onClick={() => navigate(`/owner/self/${id}/generate-id`)}>
             Generate Property ID <ArrowRight size={16} />
           </Button>
         )}
-
         {phase3Open && (
-          <Button
-            size="block"
-            className="mt-4"
-            onClick={() => navigate(`/auditor/properties/${id}/capture`)}
-          >
+          <Button size="block" className="mt-4" onClick={() => navigate(`/owner/self/${id}/capture`)}>
             {property.status === 'in_revision' ? 'Update follow-up' : 'Continue to capture'} <ArrowRight size={16} />
           </Button>
         )}
-
         {(phase4Open || phase4Pending) && (
           <Button
             size="block"
             className="mt-4 bg-violet-700 hover:bg-violet-800 text-white"
-            onClick={() => navigate(`/auditor/properties/${id}/phase4`)}
+            onClick={() => navigate(`/owner/self/${id}/phase4`)}
           >
             {phase4Pending
               ? 'View Phase 4 (under review)'
@@ -182,8 +130,6 @@ const PropertyDetailPage = () => {
               const r = reviewByKey[s.key];
               const canEdit = ['phase1_done', 'in_revision'].includes(property.status) ||
                 (r?.decision === 'approved' && r?.approvedForFutureReview);
-              // Count unread bell notifications scoped to this exact section
-              // so the card shows a NEW badge until the auditor opens it.
               const unread = bellItems.filter(
                 (n) => n.propertyId === property.id
                   && !n.readAt
@@ -205,7 +151,7 @@ const PropertyDetailPage = () => {
                       ? r.comment
                       : null
                   }
-                  onClick={canEdit && property.propertyCode ? () => navigate(`/auditor/properties/${id}/sections/${s.key}`) : null}
+                  onClick={canEdit && property.propertyCode ? () => navigate(`/owner/self/${id}/sections/${s.key}`) : null}
                 />
               );
             })}
@@ -215,22 +161,16 @@ const PropertyDetailPage = () => {
         {property.contract?.signedPdfUrl && (
           <section className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
             <div className="flex items-center gap-2">
-              <FileCheck2 size={16} /> Contract signed by owner
+              <FileCheck2 size={16} /> Contract signed
             </div>
-            <a
-              href={property.contract.signedPdfUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 inline-block text-emerald-800 underline"
-            >
+            <a href={property.contract.signedPdfUrl} target="_blank" rel="noreferrer" className="mt-1 inline-block text-emerald-800 underline">
               View signed PDF
             </a>
           </section>
         )}
-
       </main>
     </div>
   );
 };
 
-export default PropertyDetailPage;
+export default SelfPropertyDetailPage;

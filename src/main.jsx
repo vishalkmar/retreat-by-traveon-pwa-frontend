@@ -5,6 +5,8 @@ import { Toaster } from 'react-hot-toast';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { SocketProvider } from './context/SocketContext.jsx';
+import { NotificationProvider } from './context/NotificationContext.jsx';
+import { OwnerModeProvider } from './context/OwnerModeContext.jsx';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -12,14 +14,18 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <AuthProvider>
         <SocketProvider>
-          <App />
-          <Toaster
-            position="top-center"
-            toastOptions={{
-              style: { borderRadius: 10, fontSize: 14 },
-              success: { iconTheme: { primary: '#0f766e', secondary: '#fff' } },
-            }}
-          />
+          <NotificationProvider>
+            <OwnerModeProvider>
+              <App />
+              <Toaster
+                position="top-center"
+                toastOptions={{
+                  style: { borderRadius: 10, fontSize: 14 },
+                  success: { iconTheme: { primary: '#0f766e', secondary: '#fff' } },
+                }}
+              />
+            </OwnerModeProvider>
+          </NotificationProvider>
         </SocketProvider>
       </AuthProvider>
     </BrowserRouter>

@@ -1,0 +1,194 @@
+import { useEffect, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import {
+  CheckCircle2, MapPin, BedDouble, IndianRupee, Mail, Phone,
+  FileSignature, ExternalLink, Sparkles, ShieldCheck,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import { api, apiMessage } from '../../services/api.js';
+import { SECTIONS } from '../../config.js';
+import TopBar from '../../components/shell/TopBar.jsx';
+import LoadingScreen from '../../components/LoadingScreen.jsx';
+
+// Final preview for auditor-linked properties. Same layout as the self
+// version, but keyed by propertyCode + acknowledges the auditor's role in
+// the timeline so the owner can see who's done what.
+
+const fmtDate = (v) => (v ? new Date(v).toLocaleString() : '—');
+
+const LinkedFinalPreviewPage = () => {
+  const { code } = useParams();
+  const [property, setProperty] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    api.get(`/owner/properties/${code}`)
+      .then((r) => { if (alive) setProperty(r.data?.data?.property); })
+      .catch((err) => toast.error(apiMessage(err, 'Could not load')))
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [code]);
+
+  if (loading) return <div className="app-shell"><LoadingScreen /></div>;
+  if (!property) return null;
+
+  const contract = property.contract || {};
+  const fields = property.fields || [];
+  const isLive = property.status === 'completed';
+
+  return (
+    <div className="app-shell">
+      <TopBar title="Final preview" />
+      <main className="flex-1 overflow-y-auto p-4 pb-24 space-y-4">
+        <section className={`rounded-2xl p-5 text-white shadow-card ${
+          isLive
+            ? 'bg-gradient-to-br from-violet-600 to-indigo-800'
+            : 'bg-gradient-to-br from-slate-500 to-slate-700'
+        }`}>
+          <div className="flex items-start gap-3">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/15">
+              {isLive ? <Sparkles size={22} /> : <ShieldCheck size={22} />}
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wider opacity-90">
+                {isLive ? 'LISTING LIVE' : 'PREVIEW'}
+              </p>
+              <h2 className="mt-0.5 text-lg font-semibold leading-snug">{property.name}</h2>
+              <p className="mt-0.5 text-xs opacity-90">{property.propertyCode}</p>
+            </div>
+          </div>
+        </section>
+
+        <Section title="Property">
+          <Row icon={MapPin} label="Address" value={property.address} />
+          <Row icon={BedDouble} label="Rooms" value={property.numberOfRooms || '—'} />
+          <Row icon={IndianRupee} label="Pricing" value={property.pricing || '—'} />
+          <Row icon={Mail} label="Owner" value={`${property.ownerName} · ${property.ownerEmail}`} />
+          {property.ownerPhone && <Row icon={Phone} label="Phone" value={property.ownerPhone} />}
+        </Section>
+
+        {property.auditor && (
+          <Section title="Audited by">
+            <div className="flex items-center gap-3">
+              {property.auditor.profilePhotoUrl ? (
+                <img src={property.auditor.profilePhotoUrl} alt={property.auditor.name} className="h-12 w-12 rounded-full object-cover" />
+              ) : (
+                <span className="grid h-12 w-12 place-items-center rounded-full bg-brand-100 text-lg font-bold text-brand-800">
+                  {(property.auditor.name || '?').slice(0, 1)}
+                </span>
+              )}
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-slate-900">{property.auditor.name}</p>
+                <p className="truncate text-xs text-slate-500">{property.auditor.email}</p>
+                {property.auditor.phone && <p className="truncate text-xs text-slate-500">{property.auditor.phone}</p>}
+              </div>
+            </div>
+          </Section>
+        )}
+
+        <Section title={`Captured sections (${fields.length})`}>
+          {fields.length === 0 ? (
+            <p className="text-xs text-slate-500">No sections captured.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {SECTIONS.map((s) => {
+                const f = fields.find((x) => x.sectionKey === s.key);
+                if (!f) return null;
+                return (
+                  <li key={s.key} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-xs">
+                    <span className="font-semibold text-slate-800">{s.label}</span>
+                    <span className="text-slate-500">
+                      {(f.photoUrls || []).length} photo{(f.photoUrls || []).length === 1 ? '' : 's'}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Section>
+
+        <Section title="Contract">
+          <Timeline
+            items={[
+              { label: 'Generated by reviewer', at: contract.generatedAt, done: !!contract.generatedAt },
+              { label: 'Sent to you by auditor', at: contract.sentAt, done: !!contract.sentAt },
+              { label: 'You uploaded signed copy', at: contract.signedAt, done: !!contract.signedAt },
+              { label: 'Listing live', at: isLive ? property.updatedAt : null, done: isLive },
+            ]}
+          />
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {contract.generatedPdfUrl && (
+              <a
+                href={contract.generatedPdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+              >
+                <FileSignature size={12} /> View original contract <ExternalLink size={11} />
+              </a>
+            )}
+            {contract.signedPdfUrl && (
+              <a
+                href={contract.signedPdfUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-200"
+              >
+                <CheckCircle2 size={12} /> View signed copy <ExternalLink size={11} />
+              </a>
+            )}
+          </div>
+        </Section>
+
+        {isLive && (
+          <Link
+            to="/owner"
+            className="block rounded-2xl bg-violet-700 p-4 text-center text-sm font-semibold text-white hover:bg-violet-800"
+          >
+            Back to dashboard
+          </Link>
+        )}
+      </main>
+    </div>
+  );
+};
+
+const Section = ({ title, children }) => (
+  <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-card">
+    <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{title}</p>
+    <div className="mt-3 space-y-2">{children}</div>
+  </section>
+);
+
+const Row = ({ icon: Icon, label, value }) => (
+  <div className="flex items-start gap-2 text-sm">
+    <Icon size={14} className="mt-0.5 shrink-0 text-slate-400" />
+    <div className="min-w-0 flex-1">
+      <p className="text-[10px] uppercase tracking-wider text-slate-500">{label}</p>
+      <p className="truncate text-slate-800">{value}</p>
+    </div>
+  </div>
+);
+
+const Timeline = ({ items }) => (
+  <ol className="relative space-y-3 pl-4">
+    <span className="absolute left-1.5 top-1.5 bottom-1.5 w-px bg-slate-200" />
+    {items.map((it, i) => (
+      <li key={i} className="relative">
+        <span className={`absolute -left-3 top-1.5 h-2.5 w-2.5 rounded-full ${
+          it.done ? 'bg-emerald-600 ring-2 ring-emerald-100' : 'bg-slate-300 ring-2 ring-slate-100'
+        }`} />
+        <div className="ml-2">
+          <p className={`text-xs font-semibold ${it.done ? 'text-slate-900' : 'text-slate-500'}`}>
+            {it.label}
+          </p>
+          <p className="text-[10px] text-slate-400">{fmtDate(it.at)}</p>
+        </div>
+      </li>
+    ))}
+  </ol>
+);
+
+export default LinkedFinalPreviewPage;
