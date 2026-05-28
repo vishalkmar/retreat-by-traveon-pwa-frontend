@@ -46,10 +46,6 @@ import OwnerLinkedReceivedContract from './pages/owner/LinkedReceivedContractPag
 import OwnerLinkedUploadSigned from './pages/owner/LinkedUploadSignedPage.jsx';
 import OwnerLinkedFinalPreview from './pages/owner/LinkedFinalPreviewPage.jsx';
 
-import SalespersonLayout from './layouts/SalespersonLayout.jsx';
-import SalespersonDashboard from './pages/salesperson/DashboardPage.jsx';
-import SalespersonLeadDetail from './pages/salesperson/LeadDetailPage.jsx';
-import SalespersonProfile from './pages/salesperson/ProfilePage.jsx';
 
 const App = () => (
   <Routes>
@@ -133,23 +129,6 @@ const App = () => (
       <Route path="self/:id/received-contract" element={<OwnerReceivedContract />} />
       <Route path="self/:id/upload-signed" element={<OwnerUploadSigned />} />
       <Route path="self/:id/final-preview" element={<OwnerFinalPreview />} />
-    </Route>
-
-    {/* Salesperson */}
-    <Route
-      path="/salesperson"
-      element={
-        <ProtectedRoute roles={['salesperson']}>
-          <SalespersonLayout />
-        </ProtectedRoute>
-      }
-    >
-      <Route index element={<SalespersonDashboard />} />
-      <Route path="yes" element={<SalespersonDashboard />} />
-      <Route path="lost" element={<SalespersonDashboard />} />
-      <Route path="won" element={<SalespersonDashboard />} />
-      <Route path="profile" element={<SalespersonProfile />} />
-      <Route path="leads/:id" element={<SalespersonLeadDetail />} />
     </Route>
 
     <Route path="*" element={<Navigate to="/" replace />} />

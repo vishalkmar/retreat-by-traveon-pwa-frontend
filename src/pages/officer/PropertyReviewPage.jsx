@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Check, X, AlertTriangle, ChevronDown, ChevronUp, RefreshCcw, ShieldCheck, ShieldX, User, MapPin, Phone, Mail, BedDouble, IndianRupee } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, apiMessage } from '../../services/api.js';
-import { SECTIONS } from '../../config.js';
+import { DEEP_DIVE_SCHEMA, ROOM_PHOTO_CATEGORIES, SECTION_PHOTO_CATEGORIES, SECTIONS } from '../../config.js';
 import TopBar from '../../components/shell/TopBar.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Field, { Textarea } from '../../components/ui/Field.jsx';
@@ -28,6 +28,157 @@ const Photos = ({ urls }) => {
       ))}
     </div>
   );
+};
+
+const formatValue = (value) => {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  if (Array.isArray(value)) return value.length ? value.join(', ') : '—';
+  if (value === null || value === undefined || value === '') return '—';
+  return String(value);
+};
+
+const DetailGrid = ({ title, rows }) => {
+  const visible = rows.filter((row) => row.value !== undefined && row.value !== null && row.value !== '');
+  if (!visible.length) return null;
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{title}</p>
+      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {visible.map((row) => (
+          <div key={row.label} className="rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-100">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">{row.label}</p>
+            <p className="mt-0.5 whitespace-pre-wrap text-xs font-medium text-slate-800">{formatValue(row.value)}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const TaggedPhotos = ({ title, groups }) => {
+  const visible = groups.filter((group) => group.urls?.length);
+  if (!visible.length) return null;
+  const flat = visible.flatMap((group) => group.urls.map((url) => ({ label: group.label, url })));
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{title}</p>
+      <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {flat.map((item) => (
+          <a
+            key={`${item.label}-${item.url}`}
+            href={item.url}
+            target="_blank"
+            rel="noreferrer"
+            className="overflow-hidden rounded-lg bg-white ring-1 ring-slate-100"
+          >
+            <img src={item.url} alt="" className="aspect-square w-full object-cover" />
+            <span className="block truncate px-2 py-1 text-[10px] font-semibold text-slate-600">{item.label}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const RoomDetailsReview = ({ data }) => {
+  const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
+  const categories = Array.isArray(data?.categories) ? data.categories : [];
+  const rows = [
+    { label: 'Room categories', value: categories.map((cat) => `${cat.name}: ${cat.count || 0}`).join(', ') },
+    { label: 'Rooms with window', value: data?.windowRooms },
+  ];
+  return (
+    <div className="space-y-3">
+      <DetailGrid title="Room summary" rows={rows} />
+      {rooms.map((room, idx) => (
+        <div key={room.rid || idx} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-900">Room #{idx + 1}{room.category ? ` · ${room.category}` : ''}</p>
+          <DetailGrid
+            title="Room details"
+            rows={[
+              { label: 'Category', value: room.category },
+              { label: 'Bed type', value: room.bedType },
+              { label: 'Has window', value: room.isWindow },
+              { label: 'Room size (sq ft)', value: room.sizeSqft },
+              { label: 'Washroom type', value: room.washroomType },
+              { label: 'Hot water', value: room.hotWater },
+              { label: 'A/C available', value: room.ac },
+              { label: 'Heater available', value: room.heater },
+              { label: 'Wi-Fi in room', value: room.wifi },
+            ]}
+          />
+          <div className="mt-3">
+            <TaggedPhotos
+              title="Room photos"
+              groups={ROOM_PHOTO_CATEGORIES.map((cat) => ({
+                label: cat.label,
+                urls: room.photos?.[cat.key] || [],
+              }))}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const DeepDiveReview = ({ sectionKey, data }) => {
+  if (!data || Object.keys(data).length === 0) return null;
+  if (sectionKey === 'rooms') return <RoomDetailsReview data={data} />;
+  const schemaRows = (DEEP_DIVE_SCHEMA[sectionKey] || []).map((field) => ({
+    label: field.label,
+    value: data[field.key],
+  }));
+  const extraRows = Object.entries(data)
+    .filter(([key]) => !(DEEP_DIVE_SCHEMA[sectionKey] || []).some((field) => field.key === key))
+    .filter(([key]) => key !== 'rooms' && key !== 'categories')
+    .map(([key, value]) => ({ label: key, value }));
+  return <DetailGrid title="Structured section details" rows={[...schemaRows, ...extraRows]} />;
+};
+
+const sectionPhotoGroups = (sectionKey, field) => {
+  const urls = field?.photoUrls || [];
+  const data = field?.deepDiveData || {};
+  let categories = SECTION_PHOTO_CATEGORIES[sectionKey] || null;
+
+  if (sectionKey === 'cctv') {
+    const coverageAreas = Array.isArray(data.coverageAreas) ? data.coverageAreas : [];
+    categories = coverageAreas.map((area) => ({ label: `CCTV coverage: ${area}` }));
+  }
+
+  if (sectionKey === 'facilities') {
+    const required = [
+      data.gymPresent === true && { label: 'Gym' },
+      data.poolPresent === true && { label: 'Swimming Pool' },
+      data.yogaShalaPresent === true && { label: 'Yoga Shala' },
+    ].filter(Boolean);
+    const extras = Array.from(
+      { length: Math.max(0, 3 - required.length) },
+      (_, idx) => ({ label: `Facility image ${idx + 1}` }),
+    );
+    categories = [...required, ...extras];
+  }
+
+  if (sectionKey === 'garden') {
+    const required = [
+      data.waterFeature === true && { label: 'Fountain / Pond Image' },
+      data.walkingPathAvailable === true && { label: 'Pathway Image' },
+      data.outdoorYoga === true && { label: 'Yoga Setup Image' },
+      data.organicGarden === true && { label: 'Plantation Close-up' },
+      data.nightLighting === true && { label: 'Evening Lighting Image' },
+    ].filter(Boolean);
+    const extras = Array.from(
+      { length: Math.max(0, 3 - required.length) },
+      (_, idx) => ({ label: `Garden image ${idx + 1}` }),
+    );
+    categories = [...required, ...extras];
+  }
+
+  return urls.map((url, idx) => ({
+    label: categories?.[idx]?.label || `Additional image ${idx + 1}`,
+    urls: [url],
+  }));
 };
 
 // Collapsible history of previous uploads so the officer can compare
@@ -197,7 +348,12 @@ const SectionReview = ({ propertyId, section, field, review, locked, onChange, a
               {(field?.description || '').trim() || <span className="text-slate-400">No notes provided.</span>}
             </p>
           </div>
-          <Photos urls={field?.photoUrls || []} />
+          <TaggedPhotos
+            title="Section photos"
+            groups={sectionPhotoGroups(section.key, field)}
+          />
+
+          <DeepDiveReview sectionKey={section.key} data={field?.deepDiveData} />
 
           <UploadHistory history={field?.photoHistory} />
 

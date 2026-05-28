@@ -65,8 +65,6 @@ const SelfPropertyDetailPage = () => {
 
   const phase2Needed = !property.propertyCode;
   const phase3Open = property.propertyCode && ['phase1_done', 'in_revision'].includes(property.status);
-  const phase4Open = ['approved', 'phase4_in_revision'].includes(property.status);
-  const phase4Pending = property.status === 'phase4_submitted';
 
   return (
     <div className="app-shell">
@@ -107,20 +105,7 @@ const SelfPropertyDetailPage = () => {
             {property.status === 'in_revision' ? 'Update follow-up' : 'Continue to capture'} <ArrowRight size={16} />
           </Button>
         )}
-        {(phase4Open || phase4Pending) && (
-          <Button
-            size="block"
-            className="mt-4 bg-violet-700 hover:bg-violet-800 text-white"
-            onClick={() => navigate(`/owner/self/${id}/phase4`)}
-          >
-            {phase4Pending
-              ? 'View Phase 4 (under review)'
-              : property.status === 'phase4_in_revision'
-                ? 'Fix Phase 4 revisions'
-                : 'Start Phase 4 deep-dive'}
-            <ArrowRight size={16} />
-          </Button>
-        )}
+        {/* Phase 4 folded into Phase 3 — no separate button. */}
 
         <section className="mt-5">
           <p className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Sections</p>

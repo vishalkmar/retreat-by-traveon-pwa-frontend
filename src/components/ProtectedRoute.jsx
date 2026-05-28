@@ -20,7 +20,6 @@ const ProtectedRoute = ({ roles, children }) => {
     const home =
       role === 'officer' ? '/officer'
       : role === 'owner' ? '/owner'
-      : role === 'salesperson' ? '/salesperson'
       : '/auditor';
     return <Navigate to={home} replace />;
   }

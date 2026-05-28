@@ -77,10 +77,6 @@ const PropertyDetailPage = () => {
 
   const phase2Needed = !property.propertyCode;
   const phase3Open = property.propertyCode && ['phase1_done', 'in_revision'].includes(property.status);
-  // Phase 4 unlocks once Phase 3 is "semi-approved" (status === 'approved')
-  // and stays available until the property is final-approved or beyond.
-  const phase4Open = ['approved', 'phase4_in_revision'].includes(property.status);
-  const phase4Pending = property.status === 'phase4_submitted';
 
   return (
     <div className="app-shell">
@@ -159,20 +155,9 @@ const PropertyDetailPage = () => {
           </Button>
         )}
 
-        {(phase4Open || phase4Pending) && (
-          <Button
-            size="block"
-            className="mt-4 bg-violet-700 hover:bg-violet-800 text-white"
-            onClick={() => navigate(`/auditor/properties/${id}/phase4`)}
-          >
-            {phase4Pending
-              ? 'View Phase 4 (under review)'
-              : property.status === 'phase4_in_revision'
-                ? 'Fix Phase 4 revisions'
-                : 'Start Phase 4 deep-dive'}
-            <ArrowRight size={16} />
-          </Button>
-        )}
+        {/* Phase 4 has been folded into Phase 3 — the deep-dive fields are
+            captured inside each section now, so no separate "Start Phase 4"
+            button. The capture button above is the single entry point. */}
 
         <section className="mt-5">
           <p className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Sections</p>

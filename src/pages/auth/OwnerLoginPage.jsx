@@ -22,6 +22,7 @@ const OwnerLoginPage = () => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [code, setCode] = useState(['', '', '', '', '', '']);
+  const [needsProfile, setNeedsProfile] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const refs = useRef([]);
 
@@ -31,6 +32,7 @@ const OwnerLoginPage = () => {
     try {
       const r = await api.post('/auth/owner/email/request-otp', { email: email.trim() });
       const data = r.data?.data || {};
+      setNeedsProfile(!!data.needsProfile);
       if (data.emailDelivered === false) {
         // Email genuinely failed (Brevo not configured / sender not verified
         // / quota / IP whitelist). Show the underlying reason loud so the
@@ -64,6 +66,7 @@ const OwnerLoginPage = () => {
   const verify = async () => {
     const joined = code.join('');
     if (joined.length !== 6) return toast.error('Enter the 6-digit code');
+    if (needsProfile && !name.trim()) return toast.error('Enter your name');
     setSubmitting(true);
     try {
       const r = await api.post('/auth/owner/email/verify-otp', {
@@ -135,6 +138,7 @@ const OwnerLoginPage = () => {
                 ))}
               </div>
 
+              {needsProfile && (
               <div className="mt-5 space-y-3">
                 <p className="text-[11px] uppercase tracking-wider text-slate-500">
                   First time? Tell us about you
@@ -162,6 +166,7 @@ const OwnerLoginPage = () => {
                   </div>
                 </Field>
               </div>
+              )}
 
               <Button onClick={verify} size="block" loading={submitting} className="mt-6">
                 Verify and continue

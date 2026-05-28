@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { Send } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, apiMessage } from '../../services/api.js';
-import { SECTIONS } from '../../config.js';
+import { ROOM_PHOTO_CATEGORIES, SECTIONS } from '../../config.js';
 import TopBar from '../../components/shell/TopBar.jsx';
 import Button from '../../components/ui/Button.jsx';
 import SectionStatusCard from '../../components/SectionStatusCard.jsx';
@@ -64,14 +64,37 @@ const CapturePage = () => {
 
   const minPhotosForSection = (sectionKey) => {
     const roomMinimum = Math.ceil((Number(property?.numberOfRooms) || 0) * 0.5);
-    return sectionKey === 'rooms' ? Math.max(3, roomMinimum || 3) : 3;
+    if (sectionKey === 'trainer') return 2;
+    return sectionKey === 'rooms' ? 0 : 3;
+  };
+
+  const roomsCompletion = (field) => {
+    const total = Number(property?.numberOfRooms) || 0;
+    const required = Math.ceil(total / 2);
+    const rooms = Array.isArray(field?.deepDiveData?.rooms) ? field.deepDiveData.rooms : [];
+    const categories = Array.isArray(field?.deepDiveData?.categories) ? field.deepDiveData.categories : [];
+    const categoryTotal = categories.reduce((sum, cat) => sum + (Number(cat.count) || 0), 0);
+    const photoCount = rooms.reduce((sum, room) => (
+      sum + ROOM_PHOTO_CATEGORIES.reduce((inner, cat) => (
+        inner + ((room.photos?.[cat.key] || []).length)
+      ), 0)
+    ), 0);
+    const complete = rooms.length >= required
+      && categoryTotal === total
+      && rooms.every((room) => (
+        room.category?.trim()
+        && ROOM_PHOTO_CATEGORIES.every((cat) => (room.photos?.[cat.key] || []).length > 0)
+      ));
+    return { complete, photoCount, required };
   };
 
   const allRequiredFilled = SECTIONS
     .filter((s) => s.required)
     .every((s) => {
       const f = fieldByKey[s.key];
-      return f && (f.description || '').trim() && (f.photoUrls || []).length >= minPhotosForSection(s.key);
+      if (!f || !(f.description || '').trim()) return false;
+      if (s.key === 'rooms') return roomsCompletion(f).complete;
+      return (f.photoUrls || []).length >= minPhotosForSection(s.key);
     });
 
   const submit = async () => {
@@ -127,13 +150,14 @@ const CapturePage = () => {
             const f = fieldByKey[s.key];
             const r = reviewByKey[s.key];
             const canEdit = !locked || (r?.decision === 'approved' && r?.approvedForFutureReview);
+            const roomState = s.key === 'rooms' ? roomsCompletion(f) : null;
             return (
               <SectionStatusCard
                 key={s.key}
                 label={s.label}
-                hint={`${s.hint} Minimum photos: ${minPhotosForSection(s.key)}.`}
+                hint={s.key === 'rooms' ? `${s.hint} Minimum room entries: ${roomState.required}.` : `${s.hint} Minimum photos: ${minPhotosForSection(s.key)}.`}
                 required={s.required}
-                photos={(f?.photoUrls || []).length}
+                photos={s.key === 'rooms' ? roomState.photoCount : (f?.photoUrls || []).length}
                 hasText={!!(f?.description || '').trim()}
                 decision={r?.decision || (f ? 'pending' : 'not_started')}
                 approvedWithObjection={!!r?.approvedForFutureReview}

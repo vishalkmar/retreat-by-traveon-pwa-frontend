@@ -11,7 +11,6 @@ const ROUTE_BY_ROLE = {
   auditor: '/auditor/notifications',
   officer: '/officer/notifications',
   owner: '/owner/notifications',
-  salesperson: '/salesperson/notifications',
 };
 
 const NotificationBell = () => {

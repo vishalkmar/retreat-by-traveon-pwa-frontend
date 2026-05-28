@@ -64,11 +64,11 @@ const PHASE_CONFIG = [
   },
   {
     key: 'capture',
-    label: () => 'Phase 3',
-    unlock: ['phase1_done', 'in_revision'],
-    active: ['phase3_submitted', 'in_review'],
+    label: () => 'Capture',
+    unlock: ['phase1_done', 'in_revision', 'phase4_in_revision'],
+    active: ['phase3_submitted', 'in_review', 'phase4_submitted'],
     done: [
-      'approved', 'phase4_submitted', 'phase4_in_revision', 'final_approved',
+      'approved', 'final_approved',
       'contract_sent', 'contract_signed', 'completed',
     ],
     routeFor: (role, id) => {
@@ -78,23 +78,14 @@ const PHASE_CONFIG = [
       return null;
     },
   },
-  {
-    key: 'phase4',
-    label: () => 'Phase 4',
-    unlock: ['approved', 'phase4_in_revision'],
-    active: ['phase4_submitted'],
-    done: ['final_approved', 'contract_sent', 'contract_signed', 'completed'],
-    routeFor: (role, id) => {
-      if (role === 'auditor') return `/auditor/properties/${id}/phase4`;
-      if (role === 'officer') return `/officer/properties/${id}/phase4`;
-      if (role === 'owner-self') return `/owner/self/${id}/phase4`;
-      return null;
-    },
-  },
+  // Phase 4 chip removed (Jun 2026) — deep-dive fields are now captured
+  // inline inside each Phase 3 section, so there's no separate phase to
+  // navigate to. The `approved` / `final_approved` statuses both flow
+  // straight to the Contract chip below.
   {
     key: 'contract',
     label: (role) => LABELS.contract[role] || 'Contract',
-    unlock: ['final_approved'],
+    unlock: ['final_approved', 'approved'],
     active: ['contract_sent'],
     done: ['contract_signed', 'completed'],
     routeFor: (role, id, propertyCode) => {
@@ -160,8 +151,15 @@ const PhaseTracker = ({ role = 'auditor', propertyId, propertyCode, status }) =>
         const target = cfg.routeFor(role, propertyId, propertyCode);
         const tone = TONE[state];
         const dotCount = propertyUnread.filter((n) => {
-          if (cfg.key === 'capture') return ['section_objection', 'section_approved', 'section_approved_objection', 'section_reupload', 'property_submitted', 'property_approved'].includes(n.type);
-          if (cfg.key === 'phase4') return ['phase4_submitted', 'phase4_revision'].includes(n.type);
+          // Phase 4 events still arrive on legacy properties — fold them
+          // into the capture chip so the badge isn't orphaned.
+          if (cfg.key === 'capture') {
+            return [
+              'section_objection', 'section_approved', 'section_approved_objection',
+              'section_reupload', 'property_submitted', 'property_approved',
+              'phase4_submitted', 'phase4_revision',
+            ].includes(n.type);
+          }
           if (cfg.key === 'contract') return ['contract_generated', 'contract_sent_to_owner'].includes(n.type);
           if (cfg.key === 'signed') return n.type === 'contract_signed';
           if (cfg.key === 'final') return n.type === 'listing_completed';

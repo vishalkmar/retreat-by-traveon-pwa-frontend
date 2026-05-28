@@ -12,7 +12,7 @@ const LoginPage = () => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const requested = params.get('role');
-  const role = ['officer', 'salesperson'].includes(requested) ? requested : 'auditor';
+  const role = requested === 'officer' ? 'officer' : 'auditor';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,11 +47,9 @@ const LoginPage = () => {
 
   const title =
     role === 'officer' ? 'Centralized Officer Login'
-    : role === 'salesperson' ? 'Salesperson Login'
     : 'Auditor Login';
   const subtitle =
     role === 'officer' ? 'Sign in to review property audits.'
-    : role === 'salesperson' ? 'Sign in to work your availability leads.'
     : 'Sign in to start auditing properties on-site.';
 
   return (

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardCheck, FileSignature, ShieldCheck, Briefcase } from 'lucide-react';
+import { ClipboardCheck, FileSignature, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const ROLE_OPTIONS = [
@@ -17,13 +17,6 @@ const ROLE_OPTIONS = [
     description: 'Review audits and approve properties',
     icon: ShieldCheck,
     accent: 'bg-amber-50 text-amber-700',
-  },
-  {
-    role: 'salesperson',
-    label: 'Salesperson Login',
-    description: 'Work availability leads and bookings',
-    icon: Briefcase,
-    accent: 'bg-emerald-50 text-emerald-700',
   },
   {
     role: 'owner',

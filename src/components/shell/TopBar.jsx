@@ -12,7 +12,7 @@ const TopBar = ({ title, back, action }) => {
   const showBack = back ?? !['/auditor', '/officer', '/owner', '/'].includes(location.pathname);
   // Suppress the bell inside the notifications page itself to avoid infinite
   // self-navigation, and on the public landing screen.
-  const onNotificationsPage = /\/(auditor|officer|owner|salesperson)\/notifications$/.test(location.pathname);
+  const onNotificationsPage = /\/(auditor|officer|owner)\/notifications$/.test(location.pathname);
   const showBell = role && !onNotificationsPage;
 
   return (
