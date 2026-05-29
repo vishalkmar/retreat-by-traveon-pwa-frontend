@@ -19,7 +19,6 @@ const NewSelfPropertyPage = () => {
     latitude: '',
     longitude: '',
     numberOfRooms: '',
-    pricing: '',
   });
   const [pinning, setPinning] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -82,7 +81,14 @@ const NewSelfPropertyPage = () => {
           <Input required value={form.name} onChange={setField('name')} placeholder="e.g. Forest Spa Retreat" />
         </Field>
         <Field label="Address">
-          <Textarea required value={form.address} onChange={setField('address')} rows={3} />
+          <Textarea
+            required
+            readOnly
+            value={form.address}
+            rows={3}
+            placeholder="Use current location to fill address"
+            className="cursor-not-allowed bg-slate-50 text-slate-700"
+          />
         </Field>
 
         <div className="rounded-2xl border border-slate-100 bg-white p-3">
@@ -105,9 +111,6 @@ const NewSelfPropertyPage = () => {
 
         <Field label="Number of rooms">
           <Input type="number" min={1} value={form.numberOfRooms} onChange={setField('numberOfRooms')} />
-        </Field>
-        <Field label="Pricing" hint="e.g. Rs 2500 / night">
-          <Input value={form.pricing} onChange={setField('pricing')} />
         </Field>
 
         <Button type="submit" size="block" loading={submitting} className="!mt-6">
