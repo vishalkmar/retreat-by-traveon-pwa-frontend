@@ -172,8 +172,8 @@ export const STATUS_LABEL = {
   phase4_in_revision: 'Following up',
   final_approved: 'Final approved',
   rejected: 'Final rejected',
-  contract_sent: 'Contract sent',
-  contract_signed: 'Contract signed',
+  contract_sent: 'Signing in progress',
+  contract_signed: 'Final signing in progress',
   completed: 'Completed',
 };
 

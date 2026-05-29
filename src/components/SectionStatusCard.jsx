@@ -36,7 +36,7 @@ const SectionStatusCard = ({
       type={onClick ? 'button' : undefined}
       onClick={onClick}
       className={`relative flex w-full items-start gap-3 rounded-2xl border bg-white p-3 text-left shadow-card ${
-        unreadCount > 0 ? 'border-rose-300 ring-2 ring-rose-100' : 'border-slate-100'
+        unreadCount > 0 ? 'border-teal-300 ring-2 ring-teal-50' : 'border-slate-100'
       } ${onClick ? 'hover:border-brand-200' : ''}`}
     >
       <span className={`grid h-9 w-9 place-items-center rounded-xl ${badge.cls}`}>
@@ -45,14 +45,14 @@ const SectionStatusCard = ({
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate font-semibold text-slate-900">{label}</span>
-          {required && <span className="text-[9px] font-semibold text-rose-500">REQ</span>}
+          {required && <span className="text-[9px] font-semibold text-emerald-600">REQ</span>}
           {unreadCount > 0 && (
-            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-rose-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-teal-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
               NEW {unreadCount > 1 ? unreadCount : ''}
             </span>
           )}
         </span>
-        {hint && <span className="block truncate text-xs font-medium text-rose-600">{hint}</span>}
+        {hint && <span className="block truncate text-xs font-medium text-teal-700">{hint}</span>}
         <span className="mt-1.5 flex items-center gap-3 text-[11px] text-slate-500">
           <span className="inline-flex items-center gap-1">
             <ImageIcon size={11} /> {photos}

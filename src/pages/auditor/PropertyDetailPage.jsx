@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowRight, MapPin, User, Phone, Mail, BedDouble, IndianRupee, FileCheck2 } from 'lucide-react';
+import {
+  ArrowRight, MapPin, User, Phone, Mail, BedDouble,
+  FileCheck2, FileSignature, Sparkles, ShieldCheck,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../../services/api.js';
 import { SECTIONS } from '../../config.js';
@@ -10,6 +13,7 @@ import Button from '../../components/ui/Button.jsx';
 import SectionStatusCard from '../../components/SectionStatusCard.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
 import PhaseTracker from '../../components/PhaseTracker.jsx';
+import PropertyFullPreview from '../../components/PropertyFullPreview.jsx';
 import { usePropertyRoom, useSocket } from '../../context/SocketContext.jsx';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 
@@ -77,12 +81,29 @@ const PropertyDetailPage = () => {
 
   const phase2Needed = !property.propertyCode;
   const phase3Open = property.propertyCode && ['phase1_done', 'in_revision'].includes(property.status);
+  const isCompleted = property.status === 'completed';
+  const finalPdfUrl = property.contract?.finalPdfUrl || property.contract?.signedPdfUrl;
 
   return (
     <div className="app-shell">
       <TopBar title="Property" />
       <main className="flex-1 overflow-y-auto p-3 pb-24">
-        <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-card">
+        {isCompleted && (
+          <section className="mb-3 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 p-5 text-white shadow-card">
+            <div className="flex items-start gap-3">
+              <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/15">
+                <Sparkles size={22} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wider opacity-90">Final preview</p>
+                <h2 className="mt-0.5 text-lg font-semibold leading-snug">{property.name}</h2>
+                <p className="mt-0.5 text-xs opacity-90">{property.propertyCode}</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-card">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <h2 className="truncate font-semibold text-slate-900">{property.name}</h2>
@@ -96,7 +117,6 @@ const PropertyDetailPage = () => {
             <InfoRow icon={User} label="Owner" value={property.ownerName} />
             <InfoRow icon={Mail} label="Owner email" value={property.ownerEmail} />
             <InfoRow icon={Phone} label="Owner phone" value={property.ownerPhone} />
-            <InfoRow icon={IndianRupee} label="Pricing" value={property.pricing} />
           </div>
         </section>
 
@@ -135,7 +155,7 @@ const PropertyDetailPage = () => {
           </section>
         )}
 
-        {phase2Needed && (
+        {!isCompleted && phase2Needed && (
           <Button
             size="block"
             className="mt-4"
@@ -145,7 +165,7 @@ const PropertyDetailPage = () => {
           </Button>
         )}
 
-        {phase3Open && (
+        {!isCompleted && phase3Open && (
           <Button
             size="block"
             className="mt-4"
@@ -159,56 +179,79 @@ const PropertyDetailPage = () => {
             captured inside each section now, so no separate "Start Phase 4"
             button. The capture button above is the single entry point. */}
 
-        <section className="mt-5">
-          <p className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Sections</p>
-          <div className="mt-2 flex flex-col gap-2">
-            {SECTIONS.map((s) => {
-              const f = fieldByKey[s.key];
-              const r = reviewByKey[s.key];
-              const canEdit = ['phase1_done', 'in_revision'].includes(property.status) ||
-                (r?.decision === 'approved' && r?.approvedForFutureReview);
-              // Count unread bell notifications scoped to this exact section
-              // so the card shows a NEW badge until the auditor opens it.
-              const unread = bellItems.filter(
-                (n) => n.propertyId === property.id
-                  && !n.readAt
-                  && n.data?.sectionKey === s.key,
-              ).length;
-              return (
-                <SectionStatusCard
-                  key={s.key}
-                  label={s.label}
-                  hint={s.hint}
-                  required={s.required}
-                  photos={(f?.photoUrls || []).length}
-                  hasText={!!(f?.description || '').trim()}
-                  decision={r?.decision || (f ? 'pending' : 'not_started')}
-                  approvedWithObjection={!!r?.approvedForFutureReview}
-                  unreadCount={unread}
-                  comment={
-                    r?.decision === 'rejected' || (r?.decision === 'approved' && r?.approvedForFutureReview)
-                      ? r.comment
-                      : null
-                  }
-                  onClick={canEdit && property.propertyCode ? () => navigate(`/auditor/properties/${id}/sections/${s.key}`) : null}
-                />
-              );
-            })}
-          </div>
-        </section>
+        {isCompleted ? (
+          <>
+            <section className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+              <div className="flex items-center gap-2 font-semibold">
+                <ShieldCheck size={16} /> Onboarding completed with contract
+              </div>
+              {finalPdfUrl && (
+                <a
+                  href={finalPdfUrl}
+                  download
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-emerald-800 underline"
+                >
+                  <FileSignature size={12} /> Download final contract
+                </a>
+              )}
+            </section>
+            <div className="mt-5">
+              <PropertyFullPreview fields={property.fields || []} />
+            </div>
+          </>
+        ) : (
+          <section className="mt-5">
+            <p className="px-1 text-xs font-semibold uppercase tracking-wider text-slate-500">Sections</p>
+            <div className="mt-2 flex flex-col gap-2">
+              {SECTIONS.map((s) => {
+                const f = fieldByKey[s.key];
+                const r = reviewByKey[s.key];
+                const canEdit = ['phase1_done', 'in_revision'].includes(property.status) ||
+                  (r?.decision === 'approved' && r?.approvedForFutureReview);
+                const unread = bellItems.filter(
+                  (n) => n.propertyId === property.id
+                    && !n.readAt
+                    && n.data?.sectionKey === s.key,
+                ).length;
+                return (
+                  <SectionStatusCard
+                    key={s.key}
+                    label={s.label}
+                    hint={s.hint}
+                    required={s.required}
+                    photos={(f?.photoUrls || []).length}
+                    hasText={!!(f?.description || '').trim()}
+                    decision={r?.decision || (f ? 'pending' : 'not_started')}
+                    approvedWithObjection={!!r?.approvedForFutureReview}
+                    unreadCount={unread}
+                    comment={
+                      r?.decision === 'rejected' || (r?.decision === 'approved' && r?.approvedForFutureReview)
+                        ? r.comment
+                        : null
+                    }
+                    onClick={canEdit && property.propertyCode ? () => navigate(`/auditor/properties/${id}/sections/${s.key}`) : null}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )}
 
-        {property.contract?.signedPdfUrl && (
+        {!isCompleted && property.contract?.signedPdfUrl && (
           <section className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
             <div className="flex items-center gap-2">
               <FileCheck2 size={16} /> Contract signed by owner
             </div>
             <a
               href={property.contract.signedPdfUrl}
+              download
               target="_blank"
               rel="noreferrer"
               className="mt-1 inline-block text-emerald-800 underline"
             >
-              View signed PDF
+              Download signed PDF
             </a>
           </section>
         )}

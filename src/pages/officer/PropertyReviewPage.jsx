@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Check, X, AlertTriangle, ChevronDown, ChevronUp, RefreshCcw, ShieldCheck, ShieldX, User, MapPin, Phone, Mail, BedDouble, IndianRupee } from 'lucide-react';
+import {
+  Check, X, AlertTriangle, ChevronDown, ChevronUp, RefreshCcw, ShieldCheck,
+  ShieldX, User, MapPin, Phone, Mail, BedDouble, FileSignature,
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, apiMessage } from '../../services/api.js';
 import { DEEP_DIVE_SCHEMA, ROOM_PHOTO_CATEGORIES, SECTION_PHOTO_CATEGORIES, SECTIONS } from '../../config.js';
@@ -10,6 +13,7 @@ import Field, { Textarea } from '../../components/ui/Field.jsx';
 import StatusPill from '../../components/ui/StatusPill.jsx';
 import LoadingScreen from '../../components/LoadingScreen.jsx';
 import PhaseTracker from '../../components/PhaseTracker.jsx';
+import PropertyFullPreview from '../../components/PropertyFullPreview.jsx';
 import { usePropertyRoom, useSocket } from '../../context/SocketContext.jsx';
 
 // The officer's review console. Every section is an accordion: tap to
@@ -589,6 +593,7 @@ const PropertyReviewPage = () => {
 
   const locked = ['approved', 'phase4_submitted', 'phase4_in_revision', 'final_approved', 'contract_sent', 'contract_signed', 'completed', 'rejected'].includes(property.status);
   const phase4Pending = ['phase4_submitted', 'phase4_in_revision'].includes(property.status);
+  const isCompleted = property.status === 'completed';
 
   return (
     <div className="app-shell">
@@ -614,7 +619,6 @@ const PropertyReviewPage = () => {
             <InfoRow icon={User} label="Owner" value={property.ownerName} />
             <InfoRow icon={Mail} label="Owner email" value={property.ownerEmail} />
             <InfoRow icon={Phone} label="Owner phone" value={property.ownerPhone} />
-            <InfoRow icon={IndianRupee} label="Pricing" value={property.pricing} />
           </div>
         </section>
 
@@ -625,6 +629,30 @@ const PropertyReviewPage = () => {
           </div>
         </section>
 
+        {isCompleted ? (
+          <>
+            <section className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+              <p className="inline-flex items-center gap-2 font-semibold">
+                <ShieldCheck size={16} /> Final completed with contract
+              </p>
+              {(property.contract?.finalPdfUrl || property.contract?.signedPdfUrl) && (
+                <a
+                  href={property.contract.finalPdfUrl || property.contract.signedPdfUrl}
+                  download
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 font-semibold text-emerald-800 underline"
+                >
+                  <FileSignature size={12} /> Download final contract
+                </a>
+              )}
+            </section>
+            <div className="mt-5">
+              <PropertyFullPreview fields={property.fields || []} />
+            </div>
+          </>
+        ) : (
+          <>
         {phase4Pending && (
           <Button
             size="block"
@@ -740,6 +768,8 @@ const PropertyReviewPage = () => {
               </div>
             </div>
           </div>
+        )}
+          </>
         )}
       </main>
     </div>

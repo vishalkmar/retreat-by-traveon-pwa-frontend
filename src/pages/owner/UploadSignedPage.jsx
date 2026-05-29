@@ -57,7 +57,7 @@ const UploadSignedPage = () => {
       await api.post(`/owner/self-properties/${id}/sign-upload`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      toast.success('Signed copy uploaded — listing live!');
+      toast.success('Signed copy uploaded. Officer final signature is in progress.');
       await load();
     } catch (err) {
       toast.error(apiMessage(err, 'Upload failed'));
@@ -201,7 +201,7 @@ const UploadSignedPage = () => {
         {hasSigned && (
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
             <p className="inline-flex items-center gap-2 font-semibold">
-              <CheckCircle2 size={14} /> Your retreat is now live.
+              <CheckCircle2 size={14} /> Signed copy sent. Officer final signature is in progress.
             </p>
             <Button
               size="block"

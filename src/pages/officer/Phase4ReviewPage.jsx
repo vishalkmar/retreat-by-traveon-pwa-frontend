@@ -112,7 +112,7 @@ const Phase4ReviewPage = () => {
     setFinalising(true);
     try {
       await api.post(`/officer/phase4/${id}/final-approve`);
-      toast.success('Final approved — contract generated');
+      toast.success('Final approved. Upload the contract from Contracts.');
       navigate('/officer');
     } catch (err) {
       toast.error(apiMessage(err, 'Action failed'));

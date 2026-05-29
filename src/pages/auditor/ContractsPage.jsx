@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import {
   FileSignature, Send, ExternalLink, Loader2, CheckCircle2, Clock,
-  Building2, Mail, Phone, ChevronRight,
+  Building2, Mail, Phone, Upload,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { api, apiMessage, getToken } from '../../services/api.js';
-import { API_URL } from '../../config.js';
+import { api, apiMessage } from '../../services/api.js';
 import TopBar from '../../components/shell/TopBar.jsx';
 import Button from '../../components/ui/Button.jsx';
 
@@ -19,6 +18,7 @@ const fmtDate = (v) => (v ? new Date(v).toLocaleString() : '—');
 const ContractsPage = () => {
   const [tab, setTab] = useState('pending');
   const [pending, setPending] = useState([]);
+  const [finalReady, setFinalReady] = useState([]);
   const [released, setReleased] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,6 +27,7 @@ const ContractsPage = () => {
     try {
       const r = await api.get('/auditor/contracts');
       setPending(r.data?.data?.pending || []);
+      setFinalReady(r.data?.data?.finalReady || []);
       setReleased(r.data?.data?.released || []);
     } catch (err) {
       toast.error(apiMessage(err, 'Could not load contracts'));
@@ -50,7 +51,7 @@ const ContractsPage = () => {
     });
   };
 
-  const items = tab === 'pending' ? pending : released;
+  const items = tab === 'pending' ? pending : tab === 'final' ? finalReady : released;
 
   return (
     <div className="app-shell">
@@ -61,9 +62,9 @@ const ContractsPage = () => {
         <section className="rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 p-4 text-white shadow-card">
           <p className="text-xs uppercase tracking-wider text-amber-100">Auditor responsibility</p>
           <h2 className="mt-1 text-base font-semibold leading-snug">
-            Contracts approved by the officer now wait here for your review.
-            Press <span className="underline">Send to owner</span> when you've
-            checked the PDF — that's when the owner gets the email.
+            Properties approved by the central officer wait here. Upload a
+            contract PDF to send it to the owner for e-signing, then complete
+            onboarding when the signed copy comes back.
           </h2>
         </section>
 
@@ -76,6 +77,15 @@ const ContractsPage = () => {
           >
             <Clock size={14} /> Pending {pending.length > 0 && (
               <span className="ml-1 rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{pending.length}</span>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`flex-1 rounded-lg py-2 font-semibold inline-flex items-center justify-center gap-1.5 ${tab === 'final' ? 'bg-white text-violet-700 shadow' : 'text-slate-600'}`}
+            onClick={() => setTab('final')}
+          >
+            <FileSignature size={14} /> Final {finalReady.length > 0 && (
+              <span className="ml-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{finalReady.length}</span>
             )}
           </button>
           <button
@@ -93,13 +103,13 @@ const ContractsPage = () => {
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center">
             <FileSignature size={28} className="mx-auto text-slate-400" />
             <p className="mt-2 text-sm text-slate-500">
-              {tab === 'pending' ? 'No contracts waiting for release.' : 'No contracts sent yet.'}
+              {tab === 'pending' ? 'No contracts waiting for your signature.' : tab === 'final' ? 'No final contracts waiting to send.' : 'No contracts sent yet.'}
             </p>
           </div>
         ) : (
           <ul className="space-y-3">
             {items.map((p) => (
-              <ContractCard key={p.id} property={p} onSent={onSent} editable={tab === 'pending'} />
+              <ContractCard key={p.id} property={p} onSent={onSent} editable={tab !== 'released'} mode={tab} reload={load} />
             ))}
           </ul>
         )}
@@ -108,25 +118,27 @@ const ContractsPage = () => {
   );
 };
 
-const ContractCard = ({ property, onSent, editable }) => {
+const ContractCard = ({ property, onSent, editable, mode, reload }) => {
   const [busy, setBusy] = useState(false);
   const contract = property.contract || {};
 
-  // Auth-aware PDF URL — uses the API base + JWT for the proxied download.
-  const previewPdf = async () => {
+  const downloadPdf = async () => {
     try {
       const res = await api.get(`/auditor/contracts/${property.id}/pdf`, { responseType: 'blob' });
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `contract-${property.propertyCode || property.id}.pdf`;
+      a.click();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
-      toast.error(apiMessage(err, 'Could not open PDF'));
+      toast.error(apiMessage(err, 'Could not download PDF'));
     }
   };
 
   const sendToOwner = async () => {
-    if (!confirm(`Email the contract to ${property.ownerEmail}?`)) return;
+    if (!confirm(`Complete onboarding and email the final contract to ${property.ownerEmail}?`)) return;
     setBusy(true);
     try {
       const r = await api.post(`/auditor/contracts/${property.id}/send-to-owner`);
@@ -137,11 +149,32 @@ const ContractCard = ({ property, onSent, editable }) => {
           icon: '⚠️',
         });
       } else {
-        toast.success('Contract emailed to the owner');
+        toast.success('Final contract emailed to the owner');
       }
       onSent?.(property.id);
+      await reload?.();
     } catch (err) {
-      toast.error(apiMessage(err, 'Could not send'));
+      toast.error(apiMessage(err, 'Could not complete'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadContract = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const fd = new FormData();
+    fd.append('contract', file);
+    setBusy(true);
+    try {
+      await api.post(`/auditor/contracts/${property.id}/upload-contract`, fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success(`Contract emailed to ${property.ownerEmail}`);
+      await reload?.();
+    } catch (err) {
+      toast.error(apiMessage(err, 'Upload failed'));
     } finally {
       setBusy(false);
     }
@@ -156,7 +189,7 @@ const ContractCard = ({ property, onSent, editable }) => {
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-slate-900">{property.name}</p>
           <p className="truncate text-xs text-slate-500">
-            {property.propertyCode || 'No ID yet'} · approved {fmtDate(property.approvedAt)}
+            {property.propertyCode || 'No ID yet'} · approved {fmtDate(property.finalApprovedAt || property.approvedAt)}
           </p>
         </div>
       </div>
@@ -191,24 +224,52 @@ const ContractCard = ({ property, onSent, editable }) => {
       </div>
 
       <div className="mt-4 flex flex-col gap-2">
-        <Button
-          variant="secondary"
-          size="md"
-          className="w-full"
-          onClick={previewPdf}
-        >
-          <ExternalLink size={15} /> Preview contract PDF
-        </Button>
-        {editable ? (
+        {contract.generatedPdfUrl && (
           <Button
-            variant="primary"
+            variant="secondary"
             size="md"
-            className="w-full bg-amber-600 hover:bg-amber-700 text-white"
-            loading={busy}
-            onClick={sendToOwner}
+            className="w-full"
+            onClick={downloadPdf}
           >
-            <Send size={15} /> Send to owner
+            <ExternalLink size={15} /> Download contract PDF
           </Button>
+        )}
+        {contract.signedPdfUrl && (
+          <a
+            href={contract.signedPdfUrl}
+            download
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-emerald-100 px-3 py-2 text-sm font-semibold text-emerald-800"
+          >
+            <CheckCircle2 size={15} /> Download owner e-signed PDF
+          </a>
+        )}
+        {contract.finalPdfUrl && (
+          <a
+            href={contract.finalPdfUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-violet-100 px-3 py-2 text-sm font-semibold text-violet-800"
+          >
+            <FileSignature size={15} /> View final PDF
+          </a>
+        )}
+        {editable ? (
+          mode === 'pending' ? (
+            <label className={`inline-flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold text-white ${busy ? 'bg-slate-400' : 'bg-amber-600 hover:bg-amber-700'}`}>
+              <Upload size={15} /> {busy ? 'Uploading...' : 'Upload contract and send'}
+              <input type="file" accept=".pdf,application/pdf" className="hidden" disabled={busy} onChange={uploadContract} />
+            </label>
+          ) : (
+            <Button
+              variant="primary"
+              size="md"
+              className="w-full bg-violet-700 hover:bg-violet-800 text-white"
+              loading={busy}
+              onClick={sendToOwner}
+            >
+              <Send size={15} /> Complete onboarding
+            </Button>
+          )
         ) : (
           <p className="text-center text-[11px] text-emerald-700 font-semibold inline-flex items-center justify-center gap-1.5">
             <CheckCircle2 size={13} /> Owner has been notified

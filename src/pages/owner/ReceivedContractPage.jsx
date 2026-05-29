@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  FileSignature, Download, ExternalLink, ArrowRight, Mail, Phone,
+  FileSignature, Download, ArrowRight, Mail, Phone,
   Building2, CheckCircle2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -21,7 +21,6 @@ const ReceivedContractPage = () => {
   const navigate = useNavigate();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -32,44 +31,22 @@ const ReceivedContractPage = () => {
     return () => { alive = false; };
   }, [id]);
 
-  const preview = async () => {
-    setBusy(true);
-    try {
-      const res = await api.get(`/owner/properties/by-id/${id}/contract/pdf`, { responseType: 'blob' });
-      const blob = new Blob([res.data], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (err) {
-      toast.error(apiMessage(err, 'Could not open PDF'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const downloadBlob = async () => {
-    setBusy(true);
-    try {
-      const res = await api.get(`/owner/properties/by-id/${id}/contract/pdf`, { responseType: 'blob' });
-      const blob = new Blob([res.data], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `contract-${property?.propertyCode || id}.pdf`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (err) {
-      toast.error(apiMessage(err, 'Could not download PDF'));
-    } finally {
-      setBusy(false);
-    }
+    const url = property?.contract?.finalPdfUrl || property?.contract?.generatedPdfUrl;
+    if (!url) return toast.error('Contract PDF is not ready yet');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `contract-${property?.propertyCode || id}.pdf`;
+    a.target = '_blank';
+    a.rel = 'noreferrer';
+    a.click();
   };
 
   if (loading) return <div className="app-shell"><LoadingScreen /></div>;
   if (!property) return null;
 
   const contract = property.contract || {};
-  const hasContract = !!contract.sentAt;
+  const hasContract = !!(contract.generatedPdfUrl || contract.finalPdfUrl || contract.sentAt);
 
   return (
     <div className="app-shell">
@@ -99,7 +76,7 @@ const ReceivedContractPage = () => {
                     Emailed to <strong>{property.ownerEmail}</strong>
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500">
-                    Sent {fmtDate(contract.sentAt)}
+                    {contract.sentAt ? `Sent ${fmtDate(contract.sentAt)}` : 'Available in your portal'}
                   </p>
                 </div>
               </div>
@@ -110,11 +87,8 @@ const ReceivedContractPage = () => {
                 {property.ownerPhone && <Row icon={Phone} label="Owner phone" value={property.ownerPhone} />}
               </dl>
 
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button variant="secondary" size="md" loading={busy} onClick={preview}>
-                  <ExternalLink size={14} /> Preview
-                </Button>
-                <Button size="md" loading={busy} onClick={downloadBlob}>
+              <div className="mt-4">
+                <Button size="block" onClick={downloadBlob}>
                   <Download size={14} /> Download
                 </Button>
               </div>

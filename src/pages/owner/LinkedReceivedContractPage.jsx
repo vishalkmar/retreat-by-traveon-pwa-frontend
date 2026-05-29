@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-  FileSignature, Download, ExternalLink, ArrowRight, Mail, Building2,
-  Info, CheckCircle2, Edit3, ListChecks, ShieldCheck,
+  FileSignature, Download, ArrowRight, Mail, Building2,
+  Info, CheckCircle2, ListChecks, ShieldCheck,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api, apiMessage } from '../../services/api.js';
@@ -23,7 +23,6 @@ const LinkedReceivedContractPage = () => {
   const navigate = useNavigate();
   const [property, setProperty] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -34,38 +33,15 @@ const LinkedReceivedContractPage = () => {
     return () => { alive = false; };
   }, [code]);
 
-  const pdfBlob = async () => {
-    const res = await api.get(`/owner/properties/${code}/contract/pdf`, { responseType: 'blob' });
-    return new Blob([res.data], { type: 'application/pdf' });
-  };
-
-  const preview = async () => {
-    setBusy(true);
-    try {
-      const url = URL.createObjectURL(await pdfBlob());
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (err) {
-      toast.error(apiMessage(err, 'Could not open PDF'));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const download = async () => {
-    setBusy(true);
-    try {
-      const url = URL.createObjectURL(await pdfBlob());
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `contract-${code}.pdf`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (err) {
-      toast.error(apiMessage(err, 'Could not download'));
-    } finally {
-      setBusy(false);
-    }
+    const url = property?.contract?.finalPdfUrl || property?.contract?.generatedPdfUrl;
+    if (!url) return toast.error('Contract PDF is not ready yet');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `contract-${code}.pdf`;
+    a.target = '_blank';
+    a.rel = 'noreferrer';
+    a.click();
   };
 
   if (loading) return <div className="app-shell"><LoadingScreen /></div>;
@@ -112,13 +88,9 @@ const LinkedReceivedContractPage = () => {
                   <strong>Read the contract end-to-end</strong> — make sure your
                   property details, owner info and terms are correct.
                 </Step>
-                <Step icon={Edit3}>
-                  <strong>Sign it</strong> — either print + sign on paper and
-                  scan/photograph, or sign digitally on the PDF.
-                </Step>
                 <Step icon={ShieldCheck}>
-                  <strong>Upload the signed copy</strong> on the next step. The
-                  moment we have it, your retreat goes live.
+                  <strong>Keep this final signed copy</strong> for your records.
+                  No upload is required from your side.
                 </Step>
               </ol>
             </section>
@@ -140,11 +112,8 @@ const LinkedReceivedContractPage = () => {
                 <Row icon={Building2} value={property.address} />
                 <Row icon={Mail} value={property.ownerEmail} />
               </dl>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                <Button variant="secondary" size="md" loading={busy} onClick={preview}>
-                  <ExternalLink size={14} /> Preview
-                </Button>
-                <Button size="md" loading={busy} onClick={download}>
+              <div className="mt-4">
+                <Button size="block" onClick={download}>
                   <Download size={14} /> Download
                 </Button>
               </div>
@@ -154,9 +123,9 @@ const LinkedReceivedContractPage = () => {
             <Button
               size="block"
               className="bg-rose-700 hover:bg-rose-800 text-white"
-              onClick={() => navigate(`/owner/properties/${code}/upload-signed`)}
+              onClick={() => navigate(`/owner/properties/${code}/final-preview`)}
             >
-              Next: upload signed copy <ArrowRight size={16} />
+              View final preview <ArrowRight size={16} />
             </Button>
 
             {contract.signedPdfUrl && (
