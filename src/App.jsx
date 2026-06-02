@@ -1,9 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
-import LandingPage from './pages/LandingPage.jsx';
 import LoginPage from './pages/auth/LoginPage.jsx';
-import OtpPage from './pages/auth/OtpPage.jsx';
-import OwnerLoginPage from './pages/auth/OwnerLoginPage.jsx';
 
 import AuditorLayout from './layouts/AuditorLayout.jsx';
 import AuditorDashboard from './pages/auditor/DashboardPage.jsx';
@@ -49,10 +46,10 @@ import OwnerLinkedFinalPreview from './pages/owner/LinkedFinalPreviewPage.jsx';
 
 const App = () => (
   <Routes>
-    <Route path="/" element={<LandingPage />} />
-    <Route path="/login" element={<LoginPage />} />
-    <Route path="/login/otp" element={<OtpPage />} />
-    <Route path="/owner/login" element={<OwnerLoginPage />} />
+    <Route path="/" element={<LoginPage />} />
+    <Route path="/login" element={<Navigate to="/" replace />} />
+    <Route path="/login/otp" element={<Navigate to="/" replace />} />
+    <Route path="/owner/login" element={<Navigate to="/" replace />} />
 
     {/* Auditor */}
     <Route

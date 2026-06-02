@@ -30,6 +30,7 @@ const defaultRoomRecord = (idx) => ({
   // local id to keep keys stable across re-renders
   rid: `room-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
   category: '',
+  price: null,
   isWindow: false,
   sizeSqft: null,
   washroomType: '',

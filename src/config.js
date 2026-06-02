@@ -148,6 +148,7 @@ export const SECTION_PHOTO_CATEGORIES = {
 // Per-individual-room structured fields.
 export const ROOM_DETAIL_FIELDS = [
   { key: 'category',    label: 'Room category',           type: 'text', required: true },
+  { key: 'price',       label: 'Price / night (₹)',       type: 'number' },
   { key: 'bedType',     label: 'Bed type',                type: 'select', options: ['Single', 'Twin', 'Double', 'Queen', 'King'] },
   { key: 'isWindow',    label: 'Has window',              type: 'bool' },
   { key: 'sizeSqft',    label: 'Room size (sq ft)',       type: 'number' },
